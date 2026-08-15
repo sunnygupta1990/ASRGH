@@ -1,5 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
+  clearAdminSession,
+  getCurrentAdmin,
+  hasAdminToken,
+  loginAdmin,
+  AuthUser,
+} from '../api/auth';
+import {
+  archiveAdminMember,
+  createAdminMember,
+  deleteAdminMember,
+  fetchAdminMembers,
+  updateAdminMember,
+} from '../api/members';
+import {
   Member,
   Event,
   SocialWorkCategory,
@@ -37,6 +51,12 @@ import {
   INITIAL_CONTACT_SUBMISSIONS,
   INITIAL_AUDIT_LOGS,
 } from '../data/initialData';
+import {
+  archiveAdminEvent,
+  createAdminEvent,
+  fetchAdminEvents,
+  updateAdminEvent,
+} from '../api/events';
 
 export type ActivePage =
   | 'home'
@@ -81,17 +101,17 @@ interface AppContextType {
   updateStatistic: (id: string, overrideValue: number, isOverridden: boolean) => void;
 
   members: Member[];
-  addMember: (member: Member) => void;
-  updateMember: (id: string, member: Partial<Member>) => void;
-  archiveMember: (id: string) => void;
-  deleteMember: (id: string) => void;
+  addMember: (member: Member) => Promise<void>;
+  updateMember: (id: string, member: Partial<Member>) => Promise<void>;
+  archiveMember: (id: string) => Promise<void>;
+  deleteMember: (id: string) => Promise<void>;
   bulkAddMembers: (newMembers: Member[]) => void;
 
   events: Event[];
-  addEvent: (event: Event) => void;
-  updateEvent: (id: string, event: Partial<Event>) => void;
-  archiveEvent: (id: string) => void;
-  deleteEvent: (id: string) => void;
+  addEvent: (event: Event) => Promise<void>;
+  updateEvent: (id: string, event: Partial<Event>) => Promise<void>;
+  archiveEvent: (id: string) => Promise<void>;
+  deleteEvent: (id: string) => Promise<void>;
   bulkAddEvents: (newEvents: Event[]) => void;
   addEventPhoto: (eventId: string, photo: EventPhoto) => void;
   addEventPhotos: (eventId: string, photos: EventPhoto[]) => void;
@@ -133,6 +153,12 @@ interface AppContextType {
   addImportBatch: (batch: ImportBatch) => void;
 
   // Admin & Auth Mode
+  isAuthenticated: boolean;
+  authLoading: boolean;
+  loginAdminUser: (email: string, password: string) => Promise<void>;
+  logoutAdminUser: () => void;
+  refreshMembersFromApi: () => Promise<void>;
+  refreshEventsFromApi: () => Promise<void>;
   isAdminPortalOpen: boolean;
   setIsAdminPortalOpen: (open: boolean) => void;
   currentUser: Employee;
@@ -163,6 +189,20 @@ function saveStored<T>(key: string, value: T): void {
   } catch (e) {
     console.error('Local storage save error', e);
   }
+}
+
+function mapAuthUserToEmployee(user: AuthUser, fallback: Employee): Employee {
+  return {
+    ...fallback,
+    id: user.id,
+    employee_code: 'ADMIN',
+    full_name: user.displayName,
+    email: user.email,
+    role_id: 'super-admin',
+    role_name: 'Super Admin',
+    status: 'active',
+    last_login_at: user.lastLoginAt ?? undefined,
+  };
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -278,6 +318,72 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
   const [roles] = useState<Role[]>(() => loadStored('roles', INITIAL_ROLES));
   const [employees] = useState<Employee[]>(() => loadStored('employees', INITIAL_EMPLOYEES));
   const [currentUser, setCurrentUser] = useState<Employee>(employees[0]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  const refreshMembersFromApi = async () => {
+    const remoteMembers = await fetchAdminMembers();
+    setMembers(remoteMembers);
+  };
+
+  const refreshEventsFromApi = async () => {
+    const remoteEvents = await fetchAdminEvents();
+    setEvents(remoteEvents);
+  };
+
+  const loginAdminUser = async (email: string, password: string) => {
+    setAuthLoading(true);
+    try {
+      const user = await loginAdmin(email, password);
+      setCurrentUser(mapAuthUserToEmployee(user, employees[0]));
+      setIsAuthenticated(true);
+      await Promise.all([
+        refreshMembersFromApi(),
+        refreshEventsFromApi(),
+      ]);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const logoutAdminUser = () => {
+    clearAdminSession();
+    setIsAuthenticated(false);
+    setCurrentUser(employees[0]);
+    setIsAdminPortalOpen(false);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      if (!hasAdminToken()) {
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const user = await getCurrentAdmin();
+        if (cancelled) return;
+        setCurrentUser(mapAuthUserToEmployee(user, employees[0]));
+        setIsAuthenticated(true);
+        await Promise.all([
+          refreshMembersFromApi(),
+          refreshEventsFromApi(),
+        ]);
+      } catch {
+        clearAdminSession();
+        if (!cancelled) setIsAuthenticated(false);
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
+    };
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Persist changes
   useEffect(() => saveStored('settings', settings), [settings]);
@@ -344,24 +450,41 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
   };
 
   // Members Actions
-  const addMember = (member: Member) => {
-    setMembers((prev) => [member, ...prev]);
-    addAuditLog('MEMBER_CREATE', 'members', `Created member record: ${member.display_name} (${member.member_code})`, member.id);
+  const addMember = async (member: Member) => {
+    const saved = isAuthenticated ? await createAdminMember(member) : member;
+    setMembers((prev) => [saved, ...prev.filter((m) => m.id !== member.id)]);
+    addAuditLog(
+      'MEMBER_CREATE',
+      'members',
+      `Created member record: ${saved.display_name} (${saved.member_code})`,
+      saved.id,
+    );
   };
 
-  const updateMember = (id: string, updated: Partial<Member>) => {
-    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, ...updated } : m)));
-    addAuditLog('MEMBER_UPDATE', 'members', `Updated member: ${updated.display_name || id}`, id);
+  const updateMember = async (id: string, updated: Partial<Member>) => {
+    const saved = isAuthenticated
+      ? await updateAdminMember(id, updated)
+      : ({ ...members.find((m) => m.id === id), ...updated } as Member);
+
+    setMembers((prev) => prev.map((m) => (m.id === id ? saved : m)));
+    addAuditLog('MEMBER_UPDATE', 'members', `Updated member: ${saved.display_name || id}`, id);
   };
 
-  const archiveMember = (id: string) => {
-    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, status: 'archived' } : m)));
+  const archiveMember = async (id: string) => {
+    const saved = isAuthenticated
+      ? await archiveAdminMember(id)
+      : ({ ...members.find((m) => m.id === id), status: 'archived' } as Member);
+
+    setMembers((prev) => prev.map((m) => (m.id === id ? saved : m)));
     addAuditLog('MEMBER_ARCHIVE', 'members', `Archived member record: ${id}`, id);
   };
 
-  const deleteMember = (id: string) => {
+  const deleteMember = async (id: string) => {
+    if (isAuthenticated) {
+      await deleteAdminMember(id);
+    }
     setMembers((prev) => prev.filter((m) => m.id !== id));
-    addAuditLog('MEMBER_DELETE', 'members', `Permanently deleted member record: ${id}`, id);
+    addAuditLog('MEMBER_DELETE', 'members', `Deleted member record: ${id}`, id);
   };
 
   const bulkAddMembers = (newMembers: Member[]) => {
@@ -369,26 +492,70 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
     addAuditLog('MEMBER_BULK_IMPORT', 'members', `Imported ${newMembers.length} member records via Excel validation engine.`);
   };
 
-  // Events Actions
-  const addEvent = (event: Event) => {
-    setEvents((prev) => [event, ...prev]);
-    addAuditLog('EVENT_CREATE', 'events', `Created event: ${event.title} (${event.event_code})`, event.id);
-  };
+// Events Actions
+const addEvent = async (event: Event) => {
+  const saved = isAuthenticated
+    ? await createAdminEvent(event)
+    : event;
 
-  const updateEvent = (id: string, updated: Partial<Event>) => {
-    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, ...updated } : e)));
-    addAuditLog('EVENT_UPDATE', 'events', `Updated event: ${updated.title || id}`, id);
-  };
+  setEvents((prev) => [saved, ...prev.filter((e) => e.id !== event.id)]);
 
-  const archiveEvent = (id: string) => {
-    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, display_status: 'archived' } : e)));
-    addAuditLog('EVENT_ARCHIVE', 'events', `Archived event: ${id}`, id);
-  };
+  addAuditLog(
+    'EVENT_CREATE',
+    'events',
+    `Created event: ${saved.title} (${saved.event_code})`,
+    saved.id,
+  );
+};
 
-  const deleteEvent = (id: string) => {
-    setEvents((prev) => prev.filter((e) => e.id !== id));
-    addAuditLog('EVENT_DELETE', 'events', `Permanently deleted event: ${id}`, id);
-  };
+const updateEvent = async (id: string, updated: Partial<Event>) => {
+  const saved = isAuthenticated
+    ? await updateAdminEvent(id, updated)
+    : ({ ...events.find((e) => e.id === id), ...updated } as Event);
+
+  setEvents((prev) =>
+    prev.map((e) => (e.id === id ? saved : e)),
+  );
+
+  addAuditLog(
+    'EVENT_UPDATE',
+    'events',
+    `Updated event: ${saved.title || id}`,
+    id,
+  );
+};
+
+const archiveEvent = async (id: string) => {
+  const saved = isAuthenticated
+    ? await archiveAdminEvent(id)
+    : ({
+        ...events.find((e) => e.id === id),
+        display_status: 'archived',
+      } as Event);
+
+  setEvents((prev) =>
+    prev.map((e) => (e.id === id ? saved : e)),
+  );
+
+  addAuditLog(
+    'EVENT_ARCHIVE',
+    'events',
+    `Archived event: ${id}`,
+    id,
+  );
+};
+
+const deleteEvent = async (id: string) => {
+  setEvents((prev) => prev.filter((e) => e.id !== id));
+
+  addAuditLog(
+    'EVENT_DELETE',
+    'events',
+    `Removed event from current view: ${id}`,
+    id,
+  );
+};
+
 
   const bulkAddEvents = (newEvents: Event[]) => {
     setEvents((prev) => [...newEvents, ...prev]);
@@ -637,6 +804,12 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
         importBatches,
         addImportBatch,
 
+        isAuthenticated,
+        authLoading,
+        loginAdminUser,
+        logoutAdminUser,
+        refreshMembersFromApi,
+        refreshEventsFromApi,
         isAdminPortalOpen,
         setIsAdminPortalOpen,
         currentUser,

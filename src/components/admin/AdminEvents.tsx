@@ -17,11 +17,24 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import {
+  fetchAdminEvents,
+  uploadAdminEventPhotos,
+} from '../../api/events';
 import { Event, EventPhoto } from '../../types';
 import { downloadTemplate } from '../../utils/excelEngine';
 
 export const AdminEvents: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
-  const { events, addEvent, updateEvent, deleteEvent, archiveEvent, socialWorkActivities, openLightbox } = useApp();
+  const {
+    events,
+    addEvent,
+    updateEvent,
+    deleteEvent,
+    archiveEvent,
+    socialWorkActivities,
+    openLightbox,
+    refreshEventsFromApi,
+  } = useApp();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -140,51 +153,40 @@ export const AdminEvents: React.FC<{ onNavigateTab: (tab: string) => void }> = (
     setIsEditing(false);
   };
 
-  const resizeImageForUat = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
-      reader.onload = () => {
-        const image = new Image();
-        image.onerror = () => reject(new Error(`Could not decode ${file.name}`));
-        image.onload = () => {
-          const maxDimension = 1600;
-          const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-          const context = canvas.getContext('2d');
-          if (!context) {
-            reject(new Error('Browser image processing is unavailable.'));
-            return;
-          }
-          context.drawImage(image, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL('image/jpeg', 0.78));
-        };
-        image.src = String(reader.result);
-      };
-      reader.readAsDataURL(file);
-    });
-
   const handleUploadLocalPhotos = async (files: FileList | null) => {
     if (!photoManagingEvent || !files?.length) return;
+
+    if (!photoManagingEvent.album_code) {
+      alert('This event does not have an album.');
+      return;
+    }
+
     setIsUploadingPhotos(true);
+
     try {
-      const photos = await Promise.all(
-        Array.from(files).map(async (file, index) => ({
-          id: `p-${Date.now()}-${index}`,
-          photo_url: await resizeImageForUat(file),
-          caption: newPhotoCaption.trim() || file.name.replace(/\.[^/.]+$/, ''),
-          display_order: (photoManagingEvent.photos?.length || 0) + index + 1,
-          uploaded_at: new Date().toISOString(),
-        }))
+      await uploadAdminEventPhotos(
+        photoManagingEvent.album_code,
+        Array.from(files),
       );
-      const updatedPhotos = [...(photoManagingEvent.photos || []), ...photos];
-      updateEvent(photoManagingEvent.id, { photos: updatedPhotos });
-      setPhotoManagingEvent({ ...photoManagingEvent, photos: updatedPhotos });
+
+      await refreshEventsFromApi();
+
+      const refreshedEvents = await fetchAdminEvents();
+      const refreshedEvent = refreshedEvents.find(
+        (event) => event.id === photoManagingEvent.id,
+      );
+
+      if (refreshedEvent) {
+        setPhotoManagingEvent(refreshedEvent);
+      }
+
       setNewPhotoCaption('');
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Unable to upload selected photos.');
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Unable to upload selected photos.',
+      );
     } finally {
       setIsUploadingPhotos(false);
     }
@@ -629,7 +631,7 @@ export const AdminEvents: React.FC<{ onNavigateTab: (tab: string) => void }> = (
               <div>
                 <p className="text-sm font-bold text-slate-900">Add photos to this event album</p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Select multiple photos from the computer. Photos are resized for the browser UAT and stored locally.
+                  Select multiple photos from the computer. Photos are optimized and uploaded to this event album.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -637,7 +639,7 @@ export const AdminEvents: React.FC<{ onNavigateTab: (tab: string) => void }> = (
                   <div className="text-center">
                     <Upload className="w-5 h-5 mx-auto text-blue-900 mb-1" />
                     <span className="text-xs font-bold text-slate-800">
-                      {isUploadingPhotos ? 'Processing photos…' : 'Choose multiple photos'}
+                      {isUploadingPhotos ? 'Uploading photos…' : 'Choose multiple photos'}
                     </span>
                     <span className="block text-[10px] text-slate-500 mt-1">JPG, PNG, WEBP</span>
                   </div>

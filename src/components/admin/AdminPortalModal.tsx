@@ -15,7 +15,6 @@ import {
   X,
   Menu,
   ChevronRight,
-  UserCheck,
   ExternalLink,
   Sparkles,
 } from 'lucide-react';
@@ -31,6 +30,7 @@ import { AdminNotifications } from './AdminNotifications';
 import { AdminImportExport } from './AdminImportExport';
 import { AdminSettings } from './AdminSettings';
 import { AdminAuditLogs } from './AdminAuditLogs';
+import { AdminLoginPanel } from './AdminLoginPanel';
 
 export const AdminPortalModal: React.FC = () => {
   const {
@@ -39,14 +39,16 @@ export const AdminPortalModal: React.FC = () => {
     activeAdminTab,
     setActiveAdminTab,
     currentUser,
-    setCurrentUser,
-    employees,
+    isAuthenticated,
+    authLoading,
+    logoutAdminUser,
     settings,
   } = useApp();
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   if (!isAdminPortalOpen) return null;
+  if (!isAuthenticated || authLoading) return <AdminLoginPanel />;
 
   const navItems = [
     { id: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
@@ -123,32 +125,18 @@ export const AdminPortalModal: React.FC = () => {
 
         {/* User Role Switcher & Exit */}
         <div className="flex items-center gap-3">
-          {/* User selector for demo simulation */}
           <div className="hidden sm:flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
-            <UserCheck className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-slate-300">Acting as:</span>
-            <select
-              value={currentUser.id}
-              onChange={(e) => {
-                const emp = employees.find((x) => x.id === e.target.value);
-                if (emp) setCurrentUser(emp);
-              }}
-              className="bg-transparent text-amber-300 font-bold focus:outline-hidden text-xs cursor-pointer"
-            >
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id} className="bg-slate-900 text-white">
-                  {emp.full_name} ({emp.role_name})
-                </option>
-              ))}
-            </select>
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-slate-300">{currentUser.full_name}</span>
+            <span className="text-amber-300 font-bold">({currentUser.role_name})</span>
           </div>
 
           <button
-            onClick={() => setIsAdminPortalOpen(false)}
+            onClick={logoutAdminUser}
             className="px-3.5 py-1.5 bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Exit to Public Site</span>
+            <span>Logout</span>
           </button>
         </div>
       </header>

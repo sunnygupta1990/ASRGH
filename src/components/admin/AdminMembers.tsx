@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import {
   Users,
   Plus,
@@ -108,7 +108,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
     setIsEditing(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.first_name?.trim() || !formData.member_code?.trim()) return;
 
@@ -116,28 +116,32 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
       formData.display_name?.trim() ||
       `${formData.first_name || ''} ${formData.last_name || ''}`.trim();
 
-    if (selectedMember) {
-      updateMember(selectedMember.id, {
-        ...formData,
-        display_name: displayName,
-      });
-    } else {
-      addMember({
-        ...formData,
-        id: `mem-${Date.now()}`,
-        display_name: displayName,
-        display_order: formData.display_order || members.length + 1,
-        visibility: formData.visibility || {
-          phone_public: false,
-          email_public: false,
-          address_public: false,
-          photo_public: true,
-          designation_public: true,
-        },
-        status: formData.status || 'active',
-      } as Member);
+    try {
+      if (selectedMember) {
+        await updateMember(selectedMember.id, {
+          ...formData,
+          display_name: displayName,
+        });
+      } else {
+        await addMember({
+          ...formData,
+          id: `mem-${Date.now()}`,
+          display_name: displayName,
+          display_order: formData.display_order || members.length + 1,
+          visibility: formData.visibility || {
+            phone_public: false,
+            email_public: false,
+            address_public: false,
+            photo_public: true,
+            designation_public: true,
+          },
+          status: formData.status || 'active',
+        } as Member);
+      }
+      setIsEditing(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to save member');
     }
-    setIsEditing(false);
   };
 
   const toggleVisibilityField = (m: Member, field: keyof Member['visibility']) => {
@@ -255,7 +259,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                       />
                       <div>
                         <div className="font-bold text-slate-900">{m.display_name}</div>
-                        <div className="text-[11px] text-slate-500">{m.designation} • {m.city}</div>
+                        <div className="text-[11px] text-slate-500">{m.designation} â€¢ {m.city}</div>
                       </div>
                     </div>
                   </td>
@@ -270,7 +274,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                         {m.management_post || 'Officer'}
                       </span>
                     ) : (
-                      <span className="text-slate-400 text-[11px]">—</span>
+                      <span className="text-slate-400 text-[11px]">â€”</span>
                     )}
                   </td>
                   <td className="p-3.5">
@@ -284,7 +288,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                         }`}
                         title="Toggle phone visibility"
                       >
-                        Phone {m.visibility?.phone_public ? '✓' : '✗'}
+                        Phone {m.visibility?.phone_public ? 'âœ“' : 'âœ—'}
                       </button>
                       <button
                         onClick={() => toggleVisibilityField(m, 'email_public')}
@@ -295,7 +299,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                         }`}
                         title="Toggle email visibility"
                       >
-                        Email {m.visibility?.email_public ? '✓' : '✗'}
+                        Email {m.visibility?.email_public ? 'âœ“' : 'âœ—'}
                       </button>
                     </div>
                   </td>
@@ -322,7 +326,9 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                       <button
                         onClick={() => {
                           if (confirm(`Permanently delete member ${m.display_name}?`)) {
-                            deleteMember(m.id);
+                            void deleteMember(m.id).catch((error) => {
+                              alert(error instanceof Error ? error.message : 'Unable to delete member');
+                            });
                           }
                         }}
                         className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
@@ -434,6 +440,24 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                 </div>
               </div>
 
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Membership Status
+                </label>
+                <select
+                  value={formData.status || 'active'}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      status: e.target.value as Member['status'],
+                    })
+                  }
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                >
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
               {/* Management Post checkbox */}
               <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -575,3 +599,4 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
     </div>
   );
 };
+
