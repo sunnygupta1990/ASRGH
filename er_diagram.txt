@@ -1,0 +1,54 @@
+erDiagram
+
+    USERS ||--o| EMPLOYEES : "has profile"
+    EMPLOYEES }o--o{ ROLES : "assigned"
+    ROLES }o--o{ PERMISSIONS : "grants"
+    EMPLOYEES }o--o{ PERMISSIONS : "overrides"
+
+    USERS ||--o{ AUDIT_LOGS : "performs"
+
+    MEMBER_CATEGORIES ||--o{ MEMBERS : "contains"
+    MEMBERS ||--o{ MEMBER_PHOTOS : "has"
+    MEMBERS ||--o{ MEMBER_VISIBILITY : "controls"
+    MEMBERS ||--o{ MEMBER_SOCIAL_LINKS : "has"
+
+    SOCIAL_WORK_CATEGORIES ||--o{ SOCIAL_WORK_ACTIVITIES : "contains"
+    SOCIAL_WORK_ACTIVITIES ||--o{ SOCIAL_WORK_EVENTS : "has"
+    EVENTS ||--o{ SOCIAL_WORK_EVENTS : "references"
+
+    EVENTS ||--|| EVENT_ALBUMS : "has"
+    EVENT_ALBUMS ||--o{ PHOTOS : "contains"
+    MEMBERS ||--o{ PHOTOS : "uploaded_by"
+
+    MEDIA_ASSETS ||--o{ PHOTO_VARIANTS : "has"
+    PHOTOS ||--o| MEDIA_ASSETS : "uses"
+
+    ANNOUNCEMENTS ||--o{ NOTIFICATIONS : "triggers"
+    EVENTS ||--o{ NOTIFICATIONS : "triggers"
+    SOCIAL_WORK_ACTIVITIES ||--o{ NOTIFICATIONS : "triggers"
+
+    CONTACT_SUBMISSIONS }o--o| EMPLOYEES : "assigned_to"
+
+    IMPORT_BATCHES ||--o{ IMPORT_ROWS : "contains"
+    IMPORT_ROWS ||--o| REJECTED_RECORDS : "may_create"
+    REJECTED_RECORDS ||--o{ REJECTION_ERRORS : "has"
+
+    IMPORT_BATCHES }o--o| USERS : "uploaded_by"
+
+    BACKUPS }o--|| USERS : "created_by"
+    BACKUP_RESTORES }o--|| USERS : "restored_by"
+    BACKUPS ||--o{ BACKUP_FILES : "contains"
+
+    ACHIEVEMENTS ||--o{ CONTENT_MEDIA : "uses"
+    MILESTONES ||--o{ CONTENT_MEDIA : "uses"
+    ABOUT_SECTIONS ||--o{ CONTENT_MEDIA : "uses"
+
+    ORGANIZATION_LOCATIONS ||--o{ EVENTS : "hosts"
+    SOCIAL_LINKS }o--|| ORGANIZATION_SETTINGS : "belongs_to"
+
+    HOMEPAGE_FEATURES }o--o| ANNOUNCEMENTS : "features"
+    HOMEPAGE_FEATURES }o--o| EVENTS : "features"
+    HOMEPAGE_FEATURES }o--o| SOCIAL_WORK_ACTIVITIES : "features"
+    HOMEPAGE_FEATURES }o--o| PHOTOS : "features"
+
+    STATISTICS ||--o| STATISTIC_OVERRIDES : "may_have"

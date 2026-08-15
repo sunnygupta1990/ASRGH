@@ -1,0 +1,1034 @@
+-- /database/schema.sql
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS citext;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE SCHEMA IF NOT EXISTS app;
+CREATE SCHEMA IF NOT EXISTS cms;
+CREATE SCHEMA IF NOT EXISTS imports;
+CREATE SCHEMA IF NOT EXISTS media;
+CREATE SCHEMA IF NOT EXISTS audit;
+CREATE SCHEMA IF NOT EXISTS backup;
+
+-- ============================================================
+-- COMMON ENUM TYPES
+-- ============================================================
+
+CREATE TYPE app.record_status AS ENUM (
+    'active',
+    'archived',
+    'deleted'
+);
+
+CREATE TYPE app.employee_status AS ENUM (
+    'active',
+    'suspended',
+    'archived'
+);
+
+CREATE TYPE app.permission_effect AS ENUM (
+    'allow',
+    'deny'
+);
+
+CREATE TYPE app.import_status AS ENUM (
+    'uploaded',
+    'validating',
+    'validated',
+    'partially_accepted',
+    'completed',
+    'failed',
+    'cancelled'
+);
+
+CREATE TYPE app.import_row_status AS ENUM (
+    'pending',
+    'accepted',
+    'rejected',
+    'warning'
+);
+
+CREATE TYPE app.rejection_status AS ENUM (
+    'rejected',
+    'corrected',
+    're_uploaded',
+    'resolved'
+);
+
+CREATE TYPE app.event_status AS ENUM (
+    'upcoming',
+    'ongoing',
+    'completed',
+    'cancelled'
+);
+
+CREATE TYPE app.announcement_status AS ENUM (
+    'draft',
+    'scheduled',
+    'published',
+    'archived'
+);
+
+CREATE TYPE app.contact_status AS ENUM (
+    'new',
+    'assigned',
+    'in_progress',
+    'resolved',
+    'closed'
+);
+
+CREATE TYPE app.media_status AS ENUM (
+    'pending',
+    'processing',
+    'ready',
+    'failed',
+    'archived'
+);
+
+CREATE TYPE app.backup_status AS ENUM (
+    'started',
+    'completed',
+    'failed',
+    'restoring',
+    'restored'
+);
+
+CREATE TYPE app.visibility AS ENUM (
+    'public',
+    'private'
+);
+
+-- ============================================================
+-- ORGANIZATION / SYSTEM SETTINGS
+-- ============================================================
+
+CREATE TABLE app.organization_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_name TEXT NOT NULL,
+    legal_name TEXT,
+    logo_media_id UUID,
+    primary_email CITEXT,
+    primary_phone TEXT,
+    whatsapp_number TEXT,
+    default_language VARCHAR(10) NOT NULL DEFAULT 'en',
+    timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+    primary_location_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.organization_locations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    address_line_1 TEXT,
+    address_line_2 TEXT,
+    city TEXT,
+    state TEXT,
+    postal_code TEXT,
+    country TEXT NOT NULL DEFAULT 'India',
+    latitude NUMERIC(9, 6),
+    longitude NUMERIC(9, 6),
+    google_maps_url TEXT,
+    phone TEXT,
+    email CITEXT,
+    office_hours TEXT,
+    is_primary BOOLEAN NOT NULL DEFAULT false,
+    status app.record_status NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE app.organization_settings
+    ADD CONSTRAINT fk_org_primary_location
+    FOREIGN KEY (primary_location_id)
+    REFERENCES app.organization_locations(id)
+    ON DELETE SET NULL;
+
+CREATE TABLE app.social_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    platform_name TEXT NOT NULL,
+    platform_key TEXT,
+    url TEXT NOT NULL,
+    icon_key TEXT,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- AUTHENTICATION / RBAC
+-- ============================================================
+
+CREATE TABLE app.users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email CITEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    is_super_admin BOOLEAN NOT NULL DEFAULT false,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_login_at TIMESTAMPTZ,
+    password_changed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.employees (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES app.users(id) ON DELETE CASCADE,
+    employee_code TEXT NOT NULL UNIQUE,
+    full_name TEXT NOT NULL,
+    designation TEXT,
+    phone TEXT,
+    status app.employee_status NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    role_name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    is_system_role BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.permissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    permission_key TEXT NOT NULL UNIQUE,
+    module_name TEXT NOT NULL,
+    action_name TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.employee_roles (
+    employee_id UUID NOT NULL REFERENCES app.employees(id) ON DELETE CASCADE,
+    role_id UUID NOT NULL REFERENCES app.roles(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    assigned_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+    PRIMARY KEY (employee_id, role_id)
+);
+
+CREATE TABLE app.role_permissions (
+    role_id UUID NOT NULL REFERENCES app.roles(id) ON DELETE CASCADE,
+    permission_id UUID NOT NULL REFERENCES app.permissions(id) ON DELETE CASCADE,
+    effect app.permission_effect NOT NULL DEFAULT 'allow',
+    PRIMARY KEY (role_id, permission_id)
+);
+
+CREATE TABLE app.employee_permission_overrides (
+    employee_id UUID NOT NULL REFERENCES app.employees(id) ON DELETE CASCADE,
+    permission_id UUID NOT NULL REFERENCES app.permissions(id) ON DELETE CASCADE,
+    effect app.permission_effect NOT NULL,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    assigned_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+    PRIMARY KEY (employee_id, permission_id)
+);
+
+-- ============================================================
+-- MEMBERS
+-- ============================================================
+
+CREATE TABLE app.member_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    status app.record_status NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_code TEXT NOT NULL UNIQUE,
+    category_id UUID REFERENCES app.member_categories(id) ON DELETE SET NULL,
+
+    first_name TEXT NOT NULL,
+    middle_name TEXT,
+    last_name TEXT,
+    display_name TEXT NOT NULL,
+
+    designation TEXT,
+
+    phone TEXT,
+    email CITEXT,
+    address_line_1 TEXT,
+    address_line_2 TEXT,
+    city TEXT,
+    state TEXT,
+    postal_code TEXT,
+
+    current_management BOOLEAN NOT NULL DEFAULT false,
+    management_post TEXT,
+    management_display_order INTEGER NOT NULL DEFAULT 0,
+
+    status app.record_status NOT NULL DEFAULT 'active',
+
+    joined_date DATE,
+
+    search_document TSVECTOR GENERATED ALWAYS AS (
+        setweight(to_tsvector('simple', coalesce(display_name, '')), 'A') ||
+        setweight(to_tsvector('simple', coalesce(designation, '')), 'B') ||
+        setweight(to_tsvector('simple', coalesce(member_code, '')), 'B')
+    ) STORED,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.member_visibility (
+    member_id UUID PRIMARY KEY REFERENCES app.members(id) ON DELETE CASCADE,
+
+    photo_visibility app.visibility NOT NULL DEFAULT 'public',
+    designation_visibility app.visibility NOT NULL DEFAULT 'public',
+    phone_visibility app.visibility NOT NULL DEFAULT 'private',
+    email_visibility app.visibility NOT NULL DEFAULT 'private',
+    address_visibility app.visibility NOT NULL DEFAULT 'private',
+    management_visibility app.visibility NOT NULL DEFAULT 'public',
+
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.member_social_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID NOT NULL REFERENCES app.members(id) ON DELETE CASCADE,
+    platform_name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.member_photos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id UUID NOT NULL REFERENCES app.members(id) ON DELETE CASCADE,
+    media_asset_id UUID,
+    is_primary BOOLEAN NOT NULL DEFAULT false,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- SOCIAL WORK
+-- ============================================================
+
+CREATE TABLE app.social_work_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    status app.record_status NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.social_work_activities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_code TEXT NOT NULL UNIQUE,
+    category_id UUID NOT NULL REFERENCES app.social_work_categories(id) ON DELETE RESTRICT,
+    title TEXT NOT NULL,
+    description TEXT,
+    activity_type TEXT NOT NULL DEFAULT 'initiative',
+    start_date DATE,
+    end_date DATE,
+    status app.record_status NOT NULL DEFAULT 'active',
+    is_featured BOOLEAN NOT NULL DEFAULT false,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- EVENTS
+-- ============================================================
+
+CREATE TABLE app.events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_code TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    description TEXT,
+
+    event_date DATE NOT NULL,
+    start_time TIME,
+    end_time TIME,
+
+    location_id UUID REFERENCES app.organization_locations(id) ON DELETE SET NULL,
+    location_name TEXT,
+    address TEXT,
+    google_maps_url TEXT,
+
+    status app.event_status NOT NULL DEFAULT 'upcoming',
+
+    is_featured BOOLEAN NOT NULL DEFAULT false,
+    is_countdown_enabled BOOLEAN NOT NULL DEFAULT false,
+
+    record_status app.record_status NOT NULL DEFAULT 'active',
+
+    search_document TSVECTOR GENERATED ALWAYS AS (
+        setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
+        setweight(to_tsvector('simple', coalesce(description, '')), 'B') ||
+        setweight(to_tsvector('simple', coalesce(event_code, '')), 'B')
+    ) STORED,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.social_work_events (
+    social_work_activity_id UUID NOT NULL
+        REFERENCES app.social_work_activities(id) ON DELETE CASCADE,
+
+    event_id UUID NOT NULL
+        REFERENCES app.events(id) ON DELETE CASCADE,
+
+    PRIMARY KEY (social_work_activity_id, event_id)
+);
+
+CREATE TABLE app.event_albums (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL UNIQUE REFERENCES app.events(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- MEDIA
+-- ============================================================
+
+CREATE TABLE media.media_assets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    original_filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    file_size_bytes BIGINT NOT NULL,
+
+    width INTEGER,
+    height INTEGER,
+
+    source_provider TEXT NOT NULL DEFAULT 'google_drive',
+    source_file_id TEXT,
+    source_path TEXT,
+
+    status app.media_status NOT NULL DEFAULT 'pending',
+
+    checksum_sha256 TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT positive_media_size CHECK (file_size_bytes > 0),
+    CONSTRAINT positive_media_dimensions CHECK (
+        (width IS NULL AND height IS NULL)
+        OR
+        (width > 0 AND height > 0)
+    )
+);
+
+CREATE TABLE media.photo_variants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    media_asset_id UUID NOT NULL REFERENCES media.media_assets(id) ON DELETE CASCADE,
+
+    variant_name TEXT NOT NULL,
+    storage_provider TEXT NOT NULL DEFAULT 'cloudflare_r2',
+    storage_key TEXT NOT NULL UNIQUE,
+
+    width INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    file_size_bytes BIGINT NOT NULL,
+    mime_type TEXT NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (media_asset_id, variant_name)
+);
+
+CREATE TABLE app.photos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    album_id UUID NOT NULL REFERENCES app.event_albums(id) ON DELETE CASCADE,
+    media_asset_id UUID NOT NULL UNIQUE REFERENCES media.media_assets(id) ON DELETE RESTRICT,
+
+    caption TEXT,
+    alt_text TEXT,
+    display_order INTEGER NOT NULL DEFAULT 0,
+
+    uploaded_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+
+    status app.record_status NOT NULL DEFAULT 'active',
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- ABOUT / ACHIEVEMENTS / MILESTONES
+-- ============================================================
+
+CREATE TABLE cms.about_sections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    section_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    status app.record_status NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE cms.achievements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    description TEXT,
+    achievement_date DATE,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    status app.record_status NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE cms.milestones (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title TEXT NOT NULL,
+    description TEXT,
+    milestone_date DATE,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    status app.record_status NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE cms.content_media (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_type TEXT NOT NULL,
+    entity_id UUID NOT NULL,
+    media_asset_id UUID NOT NULL REFERENCES media.media_assets(id) ON DELETE RESTRICT,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- ANNOUNCEMENTS
+-- ============================================================
+
+CREATE TABLE cms.announcements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    announcement_code TEXT NOT NULL UNIQUE,
+
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+
+    status app.announcement_status NOT NULL DEFAULT 'draft',
+
+    publish_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+
+    is_important BOOLEAN NOT NULL DEFAULT false,
+    is_featured BOOLEAN NOT NULL DEFAULT false,
+
+    record_status app.record_status NOT NULL DEFAULT 'active',
+
+    search_document TSVECTOR GENERATED ALWAYS AS (
+        setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
+        setweight(to_tsvector('simple', coalesce(content, '')), 'B')
+    ) STORED,
+
+    created_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- NOTIFICATIONS
+-- ============================================================
+
+CREATE TABLE app.notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+
+    target_type TEXT NOT NULL DEFAULT 'all',
+    target_reference_id UUID,
+
+    announcement_id UUID REFERENCES cms.announcements(id) ON DELETE SET NULL,
+    event_id UUID REFERENCES app.events(id) ON DELETE SET NULL,
+    social_work_activity_id UUID
+        REFERENCES app.social_work_activities(id) ON DELETE SET NULL,
+
+    status TEXT NOT NULL DEFAULT 'draft',
+
+    scheduled_at TIMESTAMPTZ,
+    sent_at TIMESTAMPTZ,
+
+    targeted_device_count INTEGER NOT NULL DEFAULT 0,
+    successful_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+
+    created_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE app.device_registrations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_token TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL,
+    app_version TEXT,
+    device_model TEXT,
+    os_version TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_seen_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- CONTACT
+-- ============================================================
+
+CREATE TABLE app.contact_submissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    name TEXT NOT NULL,
+    email CITEXT,
+    phone TEXT,
+    subject TEXT,
+    message TEXT NOT NULL,
+
+    status app.contact_status NOT NULL DEFAULT 'new',
+
+    assigned_to UUID REFERENCES app.employees(id) ON DELETE SET NULL,
+
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    assigned_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+    closed_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- HOMEPAGE FEATURES
+-- ============================================================
+
+CREATE TABLE cms.homepage_features (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    feature_type TEXT NOT NULL,
+    entity_id UUID NOT NULL,
+
+    display_order INTEGER NOT NULL DEFAULT 0,
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+
+    starts_at TIMESTAMPTZ,
+    ends_at TIMESTAMPTZ,
+
+    created_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- STATISTICS
+-- ============================================================
+
+CREATE TABLE cms.statistics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    statistic_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+
+    calculated_value NUMERIC NOT NULL DEFAULT 0,
+    display_value TEXT,
+
+    is_enabled BOOLEAN NOT NULL DEFAULT true,
+    display_order INTEGER NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE cms.statistic_overrides (
+    statistic_id UUID PRIMARY KEY
+        REFERENCES cms.statistics(id) ON DELETE CASCADE,
+
+    override_value NUMERIC NOT NULL,
+    override_display_value TEXT,
+
+    reason TEXT NOT NULL,
+
+    overridden_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+    overridden_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- IMPORTS
+-- ============================================================
+
+CREATE TABLE imports.import_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    batch_code TEXT NOT NULL UNIQUE,
+
+    module_name TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+
+    uploaded_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+
+    status app.import_status NOT NULL DEFAULT 'uploaded',
+
+    total_rows INTEGER NOT NULL DEFAULT 0,
+    accepted_rows INTEGER NOT NULL DEFAULT 0,
+    rejected_rows INTEGER NOT NULL DEFAULT 0,
+    warning_rows INTEGER NOT NULL DEFAULT 0,
+
+    template_version TEXT,
+
+    started_at TIMESTAMPTZ,
+    validated_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE imports.import_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    batch_id UUID NOT NULL
+        REFERENCES imports.import_batches(id) ON DELETE CASCADE,
+
+    row_number INTEGER NOT NULL,
+
+    row_status app.import_row_status NOT NULL DEFAULT 'pending',
+
+    business_code TEXT,
+
+    original_data JSONB NOT NULL,
+
+    normalized_data JSONB,
+
+    validation_messages JSONB,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (batch_id, row_number)
+);
+
+CREATE TABLE imports.rejected_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    import_row_id UUID NOT NULL UNIQUE
+        REFERENCES imports.import_rows(id) ON DELETE CASCADE,
+
+    batch_id UUID NOT NULL
+        REFERENCES imports.import_batches(id) ON DELETE CASCADE,
+
+    module_name TEXT NOT NULL,
+
+    original_data JSONB NOT NULL,
+
+    status app.rejection_status NOT NULL DEFAULT 'rejected',
+
+    corrected_at TIMESTAMPTZ,
+    re_uploaded_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+
+    resolved_by UUID REFERENCES app.users(id) ON DELETE SET NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE imports.rejection_errors (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    rejected_record_id UUID NOT NULL
+        REFERENCES imports.rejected_records(id) ON DELETE CASCADE,
+
+    field_name TEXT,
+    error_code TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    suggested_fix TEXT,
+
+    severity TEXT NOT NULL DEFAULT 'error',
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- BACKUPS
+-- ============================================================
+
+CREATE TABLE backup.backups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    backup_code TEXT NOT NULL UNIQUE,
+
+    status app.backup_status NOT NULL DEFAULT 'started',
+
+    created_by UUID NOT NULL
+        REFERENCES app.users(id) ON DELETE RESTRICT,
+
+    backup_version TEXT NOT NULL,
+
+    database_checksum TEXT,
+    manifest_checksum TEXT,
+
+    total_files INTEGER NOT NULL DEFAULT 0,
+    total_bytes BIGINT NOT NULL DEFAULT 0,
+
+    google_drive_folder_id TEXT,
+    google_drive_path TEXT,
+
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ,
+
+    error_message TEXT
+);
+
+CREATE TABLE backup.backup_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    backup_id UUID NOT NULL
+        REFERENCES backup.backups(id) ON DELETE CASCADE,
+
+    relative_path TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    size_bytes BIGINT NOT NULL,
+    checksum_sha256 TEXT,
+
+    google_drive_file_id TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    UNIQUE (backup_id, relative_path)
+);
+
+CREATE TABLE backup.backup_restores (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    backup_id UUID NOT NULL
+        REFERENCES backup.backups(id) ON DELETE RESTRICT,
+
+    restored_by UUID NOT NULL
+        REFERENCES app.users(id) ON DELETE RESTRICT,
+
+    status app.backup_status NOT NULL DEFAULT 'restoring',
+
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ,
+
+    error_message TEXT
+);
+
+-- ============================================================
+-- AUDIT LOGGING
+-- ============================================================
+
+CREATE TABLE audit.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    actor_user_id UUID REFERENCES app.users(id) ON DELETE SET NULL,
+
+    action TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id UUID,
+
+    old_values JSONB,
+    new_values JSONB,
+
+    ip_address INET,
+    user_agent TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX idx_members_category
+    ON app.members(category_id);
+
+CREATE INDEX idx_members_status
+    ON app.members(status);
+
+CREATE INDEX idx_members_current_management
+    ON app.members(current_management)
+    WHERE current_management = true
+      AND status = 'active';
+
+CREATE INDEX idx_members_search
+    ON app.members USING GIN(search_document);
+
+CREATE INDEX idx_members_display_name_trgm
+    ON app.members USING GIN(display_name gin_trgm_ops);
+
+CREATE INDEX idx_social_work_activity_category
+    ON app.social_work_activities(category_id);
+
+CREATE INDEX idx_social_work_activity_status
+    ON app.social_work_activities(status);
+
+CREATE INDEX idx_events_date
+    ON app.events(event_date);
+
+CREATE INDEX idx_events_status
+    ON app.events(status);
+
+CREATE INDEX idx_events_search
+    ON app.events USING GIN(search_document);
+
+CREATE INDEX idx_events_record_status
+    ON app.events(record_status);
+
+CREATE INDEX idx_social_work_events_event
+    ON app.social_work_events(event_id);
+
+CREATE INDEX idx_photos_album
+    ON app.photos(album_id);
+
+CREATE INDEX idx_photos_status
+    ON app.photos(status);
+
+CREATE INDEX idx_announcements_publish_at
+    ON cms.announcements(publish_at);
+
+CREATE INDEX idx_announcements_status
+    ON cms.announcements(status);
+
+CREATE INDEX idx_announcements_search
+    ON cms.announcements USING GIN(search_document);
+
+CREATE INDEX idx_contact_status
+    ON app.contact_submissions(status);
+
+CREATE INDEX idx_contact_assigned_to
+    ON app.contact_submissions(assigned_to);
+
+CREATE INDEX idx_import_batches_status
+    ON imports.import_batches(status);
+
+CREATE INDEX idx_import_rows_batch
+    ON imports.import_rows(batch_id);
+
+CREATE INDEX idx_rejected_records_batch
+    ON imports.rejected_records(batch_id);
+
+CREATE INDEX idx_audit_actor
+    ON audit.audit_logs(actor_user_id);
+
+CREATE INDEX idx_audit_entity
+    ON audit.audit_logs(entity_type, entity_id);
+
+CREATE INDEX idx_audit_created_at
+    ON audit.audit_logs(created_at);
+
+CREATE INDEX idx_backup_status
+    ON backup.backups(status);
+
+-- ============================================================
+-- IMPORTANT BUSINESS CONSTRAINTS
+-- ============================================================
+
+ALTER TABLE app.members
+    ADD CONSTRAINT chk_management_post_required
+    CHECK (
+        current_management = false
+        OR management_post IS NOT NULL
+    );
+
+ALTER TABLE app.events
+    ADD CONSTRAINT chk_event_end_after_start
+    CHECK (
+        start_time IS NULL
+        OR end_time IS NULL
+        OR end_time >= start_time
+    );
+
+ALTER TABLE cms.announcements
+    ADD CONSTRAINT chk_announcement_dates
+    CHECK (
+        expires_at IS NULL
+        OR publish_at IS NULL
+        OR expires_at > publish_at
+    );
+
+ALTER TABLE app.organization_locations
+    ADD CONSTRAINT chk_single_primary_location
+    CHECK (
+        is_primary = false
+        OR status = 'active'
+    );
+
+CREATE UNIQUE INDEX ux_primary_location
+    ON app.organization_locations(is_primary)
+    WHERE is_primary = true
+      AND status = 'active';
+
+CREATE UNIQUE INDEX ux_primary_member_photo
+    ON app.member_photos(member_id)
+    WHERE is_primary = true;
+
+-- ============================================================
+-- SEED CORE PERMISSIONS
+-- ============================================================
+
+INSERT INTO app.permissions (
+    permission_key,
+    module_name,
+    action_name,
+    description
+)
+VALUES
+    ('members.view', 'members', 'view', 'View members'),
+    ('members.create', 'members', 'create', 'Create members'),
+    ('members.edit', 'members', 'edit', 'Edit members'),
+    ('members.import', 'members', 'import', 'Import members'),
+    ('members.archive', 'members', 'archive', 'Archive members'),
+
+    ('events.view', 'events', 'view', 'View events'),
+    ('events.create', 'events', 'create', 'Create events'),
+    ('events.edit', 'events', 'edit', 'Edit events'),
+    ('events.import', 'events', 'import', 'Import events'),
+    ('events.archive', 'events', 'archive', 'Archive events'),
+
+    ('social_work.view', 'social_work', 'view', 'View social work'),
+    ('social_work.create', 'social_work', 'create', 'Create social work'),
+    ('social_work.edit', 'social_work', 'edit', 'Edit social work'),
+    ('social_work.archive', 'social_work', 'archive', 'Archive social work'),
+
+    ('gallery.view', 'gallery', 'view', 'View gallery'),
+    ('gallery.upload', 'gallery', 'upload', 'Upload gallery photos'),
+    ('gallery.edit', 'gallery', 'edit', 'Edit gallery'),
+    ('gallery.archive', 'gallery', 'archive', 'Archive gallery'),
+
+    ('announcements.view', 'announcements', 'view', 'View announcements'),
+    ('announcements.create', 'announcements', 'create', 'Create announcements'),
+    ('announcements.edit', 'announcements', 'edit', 'Edit announcements'),
+    ('announcements.publish', 'announcements', 'publish', 'Publish announcements'),
+    ('announcements.schedule', 'announcements', 'schedule', 'Schedule announcements'),
+
+    ('notifications.create', 'notifications', 'create', 'Create notifications'),
+    ('notifications.send', 'notifications', 'send', 'Send notifications'),
+
+    ('contact.view', 'contact', 'view', 'View contact submissions'),
+    ('contact.assign', 'contact', 'assign', 'Assign contact submissions'),
+    ('contact.update', 'contact', 'update', 'Update contact submissions'),
+
+    ('imports.verify', 'imports', 'verify', 'Verify imports'),
+    ('imports.upload_accepted', 'imports', 'upload_accepted', 'Import accepted rows'),
+    ('imports.download_rejected', 'imports', 'download_rejected', 'Download rejected rows'),
+
+    ('backup.create', 'backup', 'create', 'Create backup'),
+    ('backup.restore', 'backup', 'restore', 'Restore backup'),
+
+    ('audit.view', 'audit', 'view', 'View audit logs'),
+
+    ('settings.view', 'settings', 'view', 'View settings'),
+    ('settings.edit', 'settings', 'edit', 'Edit settings')
+ON CONFLICT (permission_key) DO NOTHING;

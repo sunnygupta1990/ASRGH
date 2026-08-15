@@ -1,0 +1,388 @@
+{
+  "achievements_import.xlsx": [
+    {
+      "A": "Column",
+      "B": "Required"
+    },
+    {
+      "A": "Achievement Code",
+      "B": "Yes"
+    },
+    {
+      "A": "Title",
+      "B": "Yes"
+    },
+    {
+      "A": "Description",
+      "B": "No"
+    },
+    {
+      "A": "Achievement Date",
+      "B": "No"
+    },
+    {
+      "A": "Display Order",
+      "B": "Yes"
+    },
+    {
+      "A": "Status",
+      "B": "Yes"
+    }
+  ],
+  "announcements_import.xlsx": [
+    {
+      "A": "Column",
+      "B": "Required",
+      "C": "Type"
+    },
+    {
+      "A": "Announcement Code",
+      "B": "Yes",
+      "C": "Text"
+    },
+    {
+      "A": "Title",
+      "B": "Yes",
+      "C": "Text"
+    },
+    {
+      "A": "Content",
+      "B": "Yes",
+      "C": "Long Text"
+    },
+    {
+      "A": "Important",
+      "B": "Yes",
+      "C": "Yes/No"
+    },
+    {
+      "A": "Featured",
+      "B": "Yes",
+      "C": "Yes/No"
+    },
+    {
+      "A": "Publish Date",
+      "B": "No",
+      "C": "Date/Time"
+    },
+    {
+      "A": "Expiry Date",
+      "B": "No",
+      "C": "Date/Time"
+    },
+    {
+      "A": "Status",
+      "B": "Yes",
+      "C": "Draft/Published/Archived"
+    }
+  ],
+  "events_import.xlsx": [
+    {
+      "A": "Column",
+      "B": "Required",
+      "C": "Type",
+      "D": "Rules"
+    },
+    {
+      "A": "Event Code",
+      "B": "Yes*",
+      "C": "Text",
+      "D": "Unique"
+    },
+    {
+      "A": "Event Title",
+      "B": "Yes",
+      "C": "Text",
+      "D": "\u2014"
+    },
+    {
+      "A": "Description",
+      "B": "No",
+      "C": "Long Text",
+      "D": "\u2014"
+    },
+    {
+      "A": "Event Date",
+      "B": "Yes",
+      "C": "Date",
+      "D": "YYYY-MM-DD"
+    },
+    {
+      "A": "Start Time",
+      "B": "No",
+      "C": "Time",
+      "D": "\u2014"
+    },
+    {
+      "A": "End Time",
+      "B": "No",
+      "C": "Time",
+      "D": "Must be \u2265 start"
+    },
+    {
+      "A": "Social Work Activity Code",
+      "B": "No",
+      "C": "Text",
+      "D": "Must exist"
+    },
+    {
+      "A": "Location",
+      "B": "No",
+      "C": "Text",
+      "D": "\u2014"
+    },
+    {
+      "A": "Address",
+      "B": "No",
+      "C": "Text",
+      "D": "\u2014"
+    },
+    {
+      "A": "Google Maps URL",
+      "B": "No",
+      "C": "URL",
+      "D": "Valid URL"
+    },
+    {
+      "A": "Event Status",
+      "B": "Yes",
+      "C": "Dropdown",
+      "D": "Upcoming/Ongoing/Completed/Cancelled"
+    },
+    {
+      "A": "Featured",
+      "B": "Yes",
+      "C": "Yes/No",
+      "D": "\u2014"
+    },
+    {
+      "A": "Countdown Enabled",
+      "B": "Yes",
+      "C": "Yes/No",
+      "D": "\u2014"
+    },
+    {
+      "A": "Display Status",
+      "B": "Yes",
+      "C": "Active/Archived",
+      "D": "\u2014"
+    }
+  ],
+  "locations_import.xlsx": [
+    {
+      "A": "Column",
+      "B": "Required",
+      "C": "Type"
+    },
+    {
+      "A": "Location Code",
+      "B": "Yes",
+      "C": "Text"
+    },
+    {
+      "A": "Location Name",
+      "B": "Yes",
+      "C": "Text"
+    },
+    {
+      "A": "Address Line 1",
+      "B": "No",
+      "C": "Text"
+    },
+    {
+      "A": "Address Line 2",
+      "B": "No",
+      "C": "Text"
+    },
+    {
+      "A": "City",
+      "B": "No",
+      "C": "Text"
+    },
+    {
+      "A": "State",
+      "B": "No",
+      "C": "Text"
+    },
+    {
+      "A": "Postal Code",
+      "B": "No",
+      "C": "Text"
+    },
+    {
+      "A": "Country",
+      "B": "Yes",
+      "C": "Text"
+    },
+    {
+      "A": "Latitude",
+      "B": "No",
+      "C": "Decimal"
+    },
+    {
+      "A": "Longitude",
+      "B": "No",
+      "C": "Decimal"
+    },
+    {
+      "A": "Google Maps URL",
+      "B": "No",
+      "C": "URL"
+    },
+    {
+      "A": "Phone",
+      "B": "No",
+      "C": "Text"
+    },
+    {
+      "A": "Email",
+      "B": "No",
+      "C": "Email"
+    },
+    {
+      "A": "Primary Location",
+      "B": "Yes",
+      "C": "Yes/No"
+    },
+    {
+      "A": "Status",
+      "B": "Yes",
+      "C": "Active/Archived"
+    }
+  ],
+  "member_categories.xlsx": [],
+  "members_import.xlsx": [
+    {
+      "A": "Member Code",
+      "B": "First Name",
+      "C": "Last Name",
+      "D": "Display Name",
+      "E": "Member Category",
+      "F": "Designation",
+      "G": "Current Management",
+      "H": "Management Post",
+      "I": "Status"
+    },
+    {
+      "A": "MEM-0001",
+      "B": "Rajesh",
+      "C": "Sharma",
+      "D": "Rajesh Sharma",
+      "E": "General",
+      "F": "Member",
+      "G": "Yes",
+      "H": "President",
+      "I": "Active"
+    },
+    {
+      "A": "MEM-0002",
+      "B": "Amit",
+      "C": "Verma",
+      "D": "Amit Verma",
+      "E": "General",
+      "F": "Member",
+      "G": "No",
+      "H": "",
+      "I": "Active"
+    }
+  ],
+  "milestones_import.xlsx": [
+    {
+      "A": "Column",
+      "B": "Required"
+    },
+    {
+      "A": "Milestone Code",
+      "B": "Yes"
+    },
+    {
+      "A": "Title",
+      "B": "Yes"
+    },
+    {
+      "A": "Description",
+      "B": "No"
+    },
+    {
+      "A": "Milestone Date",
+      "B": "No"
+    },
+    {
+      "A": "Display Order",
+      "B": "Yes"
+    },
+    {
+      "A": "Status",
+      "B": "Yes"
+    }
+  ],
+  "social_work_categories.xlsx": [],
+  "social_work_import.xlsx": [
+    {
+      "A": "Column",
+      "B": "Required",
+      "C": "Type",
+      "D": "Rules"
+    },
+    {
+      "A": "Activity Code",
+      "B": "Yes*",
+      "C": "Text",
+      "D": "Unique"
+    },
+    {
+      "A": "Social Work Category",
+      "B": "Yes",
+      "C": "Dropdown",
+      "D": "Must exist"
+    },
+    {
+      "A": "Title",
+      "B": "Yes",
+      "C": "Text",
+      "D": "\u2014"
+    },
+    {
+      "A": "Description",
+      "B": "No",
+      "C": "Long Text",
+      "D": "\u2014"
+    },
+    {
+      "A": "Activity Type",
+      "B": "Yes",
+      "C": "Text/Dropdown",
+      "D": "\u2014"
+    },
+    {
+      "A": "Start Date",
+      "B": "No",
+      "C": "Date",
+      "D": "YYYY-MM-DD"
+    },
+    {
+      "A": "End Date",
+      "B": "No",
+      "C": "Date",
+      "D": "Must not precede Start Date"
+    },
+    {
+      "A": "Featured",
+      "B": "Yes",
+      "C": "Yes/No",
+      "D": "\u2014"
+    },
+    {
+      "A": "Display Order",
+      "B": "Yes",
+      "C": "Number",
+      "D": "\u2014"
+    },
+    {
+      "A": "Status",
+      "B": "Yes",
+      "C": "Active/Archived",
+      "D": "\u2014"
+    }
+  ]
+}
