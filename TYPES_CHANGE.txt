@@ -1,0 +1,14 @@
+// Add this optional property to EventPhoto in frontend/src/types.ts:
+//
+// export interface EventPhoto {
+//   id: string;
+//   photo_url: string;
+//   thumbnail_url?: string;
+//   caption?: string;
+//   display_order: number;
+//   uploaded_at: string;
+//   is_featured?: boolean;
+// }
+//
+// The full EventPhoto interface should therefore include:
+// is_featured?: boolean;

@@ -1,4 +1,4 @@
-// src/api/events.ts
+// frontend/src/api/events.ts
 
 import { Event } from '../types';
 import { apiRequest } from './client';
@@ -8,6 +8,7 @@ interface BackendEventPhoto {
   id: string;
   displayOrder: number;
   caption?: string | null;
+  isFeatured: boolean;
   createdAt: string;
   mediaAsset: {
     storageKey: string;
@@ -20,6 +21,7 @@ interface BackendEventPhoto {
 interface BackendEventAlbum {
   id: string;
   title: string;
+  coverMediaId?: string | null;
   photos: BackendEventPhoto[];
 }
 
@@ -34,6 +36,7 @@ interface BackendEvent {
   startAt?: string | null;
   endAt?: string | null;
   status: string;
+  coverMediaId?: string | null;
   customFields?: Record<string, unknown> | null;
   album?: BackendEventAlbum | null;
 }
@@ -81,10 +84,10 @@ export function mapBackendEvent(event: BackendEvent): Event {
       ? start.toISOString().slice(0, 10)
       : '',
     start_time: start
-      ? start.toTimeString().slice(0, 5)
+      ? start.toISOString().slice(11, 16)
       : undefined,
     end_time: end
-      ? end.toTimeString().slice(0, 5)
+      ? end.toISOString().slice(11, 16)
       : undefined,
     location: event.venue ?? '',
     address: custom<string | undefined>(event, 'address', undefined),
@@ -119,27 +122,50 @@ export function mapBackendEvent(event: BackendEvent): Event {
         caption: photo.caption ?? undefined,
         display_order: photo.displayOrder,
         uploaded_at: photo.createdAt,
+        is_featured: photo.isFeatured,
       })) ?? [],
   };
 }
 
+function parseTime(value?: string): string | undefined {
+  if (!value) return undefined;
+
+  const trimmed = value.trim();
+  const direct = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(trimmed);
+
+  if (direct) {
+    return `${direct[1]}:${direct[2]}`;
+  }
+
+  const amPm = /^(1[0-2]|0?[1-9]):([0-5]\d)\s*(AM|PM)$/i.exec(trimmed);
+
+  if (!amPm) {
+    return undefined;
+  }
+
+  let hour = Number(amPm[1]);
+  const minute = amPm[2];
+  const period = amPm[3].toUpperCase();
+
+  if (period === 'AM' && hour === 12) {
+    hour = 0;
+  }
+
+  if (period === 'PM' && hour !== 12) {
+    hour += 12;
+  }
+
+  return `${String(hour).padStart(2, '0')}:${minute}`;
+}
+
+function localDateTimeToIso(date?: string, time?: string): string | undefined {
+  if (!date) return undefined;
+
+  const normalizedTime = parseTime(time) ?? '00:00';
+  return new Date(`${date}T${normalizedTime}:00`).toISOString();
+}
+
 function toBackendEvent(event: Partial<Event>) {
-  const startAt =
-    event.event_date && event.start_time
-      ? new Date(
-          `${event.event_date}T${event.start_time}:00`,
-        ).toISOString()
-      : event.event_date
-        ? new Date(`${event.event_date}T00:00:00`).toISOString()
-        : undefined;
-
-  const endAt =
-    event.event_date && event.end_time
-      ? new Date(
-          `${event.event_date}T${event.end_time}:00`,
-        ).toISOString()
-      : undefined;
-
   const slug =
     event.event_code ||
     event.title
@@ -153,8 +179,10 @@ function toBackendEvent(event: Partial<Event>) {
     category: event.category,
     description: event.description,
     venue: event.location,
-    startAt,
-    endAt,
+    startAt: localDateTimeToIso(event.event_date, event.start_time),
+    endAt: event.end_time
+      ? localDateTimeToIso(event.event_date, event.end_time)
+      : undefined,
     status:
       event.display_status === 'archived'
         ? 'archived'
@@ -231,8 +259,44 @@ export async function uploadAdminEventPhotos(
 
   if (!response.ok) {
     const data = await response.json();
-    throw new Error(
-      data.message ?? 'Unable to upload photos',
-    );
+    throw new Error(data.message ?? 'Unable to upload photos');
   }
+}
+
+export async function updateAdminEventPhotoCaption(
+  albumId: string,
+  photoId: string,
+  caption: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/albums/${albumId}/photos/${photoId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ caption }),
+    },
+  );
+}
+
+export async function setAdminEventCoverPhoto(
+  albumId: string,
+  photoId: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/albums/${albumId}/photos/${photoId}/cover`,
+    {
+      method: 'PATCH',
+    },
+  );
+}
+
+export async function deleteAdminEventPhoto(
+  albumId: string,
+  photoId: string,
+): Promise<void> {
+  await apiRequest(
+    `/api/albums/${albumId}/photos/${photoId}`,
+    {
+      method: 'DELETE',
+    },
+  );
 }
