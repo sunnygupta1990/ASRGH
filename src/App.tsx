@@ -22,7 +22,7 @@ import { ContactPage } from './pages/ContactPage';
 import { AdminPortalModal } from './components/admin/AdminPortalModal';
 
 const AppContent: React.FC = () => {
-  const { activePage, textSize } = useApp();
+  const { activePage, textSize, publicContentError } = useApp();
 
   const renderActivePage = () => {
     switch (activePage) {
@@ -65,7 +65,17 @@ const AppContent: React.FC = () => {
       <Header />
 
       {/* 3. Main Page Content */}
-      <main className="flex-1 pb-20 md:pb-0">{renderActivePage()}</main>
+      <main className="flex-1 pb-20 md:pb-0">
+        {publicContentError && (
+          <div
+            role="alert"
+            className="border-b border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-800"
+          >
+            Unable to load public events and members: {publicContentError}
+          </div>
+        )}
+        {renderActivePage()}
+      </main>
 
       {/* 4. Footer */}
       <Footer />

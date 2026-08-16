@@ -4,12 +4,12 @@ import { useApp } from '../context/AppContext';
 import { Member } from '../types';
 
 export const ManagementPage: React.FC = () => {
-  const { members, setSelectedEntityId, setActivePage } = useApp();
+  const { publicMembers, setSelectedEntityId, setActivePage } = useApp();
 
   const [activeModalMember, setActiveModalMember] = useState<Member | null>(null);
 
   // Extract management members sorted by display_order
-  const managementMembers = members
+  const managementMembers = publicMembers
     .filter((m) => m.status === 'active' && m.current_management)
     .sort((a, b) => a.display_order - b.display_order);
 

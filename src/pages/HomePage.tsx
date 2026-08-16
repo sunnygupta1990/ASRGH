@@ -22,9 +22,9 @@ export const HomePage: React.FC = () => {
     settings,
     statistics,
     announcements,
-    events,
+    publicEvents,
     socialWorkActivities,
-    members,
+    publicMembers,
     setActivePage,
     setSelectedEntityId,
     openLightbox,
@@ -32,7 +32,7 @@ export const HomePage: React.FC = () => {
   } = useApp();
 
   // Upcoming featured events
-  const upcomingEvents = events
+  const upcomingEvents = publicEvents
     .filter((e) => e.display_status === 'active' && (e.status === 'upcoming' || e.status === 'ongoing'))
     .slice(0, 3);
 
@@ -47,7 +47,7 @@ export const HomePage: React.FC = () => {
     .slice(0, 3);
 
   // Management members snapshot
-  const managementPreview = members
+  const managementPreview = publicMembers
     .filter((m) => m.status === 'active' && m.current_management)
     .sort((a, b) => a.display_order - b.display_order)
     .slice(0, 4);

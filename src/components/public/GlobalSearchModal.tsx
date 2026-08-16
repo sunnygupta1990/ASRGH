@@ -6,8 +6,8 @@ export const GlobalSearchModal: React.FC = () => {
   const {
     isSearchOpen,
     setIsSearchOpen,
-    members,
-    events,
+    publicMembers,
+    publicEvents,
     socialWorkActivities,
     announcements,
     milestones,
@@ -47,7 +47,7 @@ export const GlobalSearchModal: React.FC = () => {
 
     // Search Members (Active and only public fields)
     if (filterType === 'all' || filterType === 'members') {
-      members
+      publicMembers
         .filter((m) => m.status === 'active')
         .forEach((m) => {
           const match =
@@ -73,7 +73,7 @@ export const GlobalSearchModal: React.FC = () => {
 
     // Search Events
     if (filterType === 'all' || filterType === 'events') {
-      events
+      publicEvents
         .filter((e) => e.display_status === 'active')
         .forEach((e) => {
           const match =
@@ -141,7 +141,7 @@ export const GlobalSearchModal: React.FC = () => {
     }
 
     return results;
-  }, [query, filterType, members, events, socialWorkActivities, announcements, milestones]);
+  }, [query, filterType, publicMembers, publicEvents, socialWorkActivities, announcements, milestones]);
 
   const handleResultClick = (page: ActivePage, entityId: string) => {
     setSelectedEntityId(entityId);

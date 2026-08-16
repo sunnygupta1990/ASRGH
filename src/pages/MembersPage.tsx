@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Users,
   Search,
@@ -17,17 +17,28 @@ import { useApp } from '../context/AppContext';
 import { Member, MemberCategory } from '../types';
 
 export const MembersPage: React.FC = () => {
-  const { members, selectedEntityId, setSelectedEntityId } = useApp();
+  const { publicMembers, selectedEntityId, setSelectedEntityId } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedLetter, setSelectedLetter] = useState<string>('all');
   const [activeModalMember, setActiveModalMember] = useState<Member | null>(() => {
     if (selectedEntityId) {
-      return members.find((m) => m.id === selectedEntityId) || null;
+      return publicMembers.find((m) => m.id === selectedEntityId) || null;
     }
     return null;
   });
+
+  useEffect(() => {
+    if (!selectedEntityId) {
+      setActiveModalMember(null);
+      return;
+    }
+
+    setActiveModalMember(
+      publicMembers.find((member) => member.id === selectedEntityId) ?? null,
+    );
+  }, [publicMembers, selectedEntityId]);
 
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
@@ -42,7 +53,7 @@ export const MembersPage: React.FC = () => {
   ];
 
   const filteredMembers = useMemo(() => {
-    return members
+    return publicMembers
       .filter((m) => m.status === 'active')
       .filter((m) => {
         // Search Filter
@@ -77,7 +88,7 @@ export const MembersPage: React.FC = () => {
         if (!a.current_management && b.current_management) return 1;
         return a.display_order - b.display_order || a.display_name.localeCompare(b.display_name);
       });
-  }, [members, searchQuery, selectedCategory, selectedLetter]);
+  }, [publicMembers, searchQuery, selectedCategory, selectedLetter]);
 
   const handleOpenDetail = (m: Member) => {
     setActiveModalMember(m);

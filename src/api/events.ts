@@ -183,6 +183,11 @@ function toBackendEvent(event: Partial<Event>) {
   };
 }
 
+export async function fetchPublicEvents(): Promise<Event[]> {
+  const response = await apiRequest<EventListResponse>('/api/public/events');
+  return response.data.map(mapBackendEvent);
+}
+
 export async function fetchAdminEvents(): Promise<Event[]> {
   const response = await apiRequest<EventListResponse>('/api/events');
   return response.data.map(mapBackendEvent);

@@ -67,6 +67,7 @@ import {
   fetchAdminEvents,
   updateAdminEvent,
 } from '../api/events';
+import { fetchPublicContent } from '../api/publicContent';
 import {
   readNavigationState,
   serializeNavigationState,
@@ -112,6 +113,7 @@ interface AppContextType {
   ) => void;
 
   members: Member[];
+  publicMembers: Member[];
   addMember: (member: Member) => Promise<void>;
   updateMember: (id: string, member: Partial<Member>) => Promise<void>;
   archiveMember: (id: string) => Promise<void>;
@@ -119,6 +121,8 @@ interface AppContextType {
   bulkAddMembers: (newMembers: Member[]) => void;
 
   events: Event[];
+  publicEvents: Event[];
+  publicContentError: string | null;
   addEvent: (event: Event) => Promise<void>;
   updateEvent: (id: string, event: Partial<Event>) => Promise<void>;
   archiveEvent: (id: string) => Promise<void>;
@@ -381,17 +385,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [statistics, setStatistics] = useState<StatisticItem[]>(() =>
     loadStored('statistics', INITIAL_STATISTICS),
   );
-  const [members, setMembers] = useState<Member[]>(() =>
-    loadStored('members', INITIAL_MEMBERS),
-  );
+  const [members, setMembers] = useState<Member[]>([]);
+  const [publicMembers, setPublicMembers] = useState<Member[]>([]);
   const [socialWorkCategories, setSocialWorkCategories] = useState<
     SocialWorkCategory[]
   >(() => loadStored('sw_categories', INITIAL_SOCIAL_WORK_CATEGORIES));
   const [socialWorkActivities, setSocialWorkActivities] = useState<
     SocialWorkActivity[]
   >(() => loadStored('sw_activities', INITIAL_SOCIAL_WORK_ACTIVITIES));
-  const [events, setEvents] = useState<Event[]>(() =>
-    loadStored('events', INITIAL_EVENTS),
+  const [events, setEvents] = useState<Event[]>([]);
+  const [publicEvents, setPublicEvents] = useState<Event[]>([]);
+  const [publicContentError, setPublicContentError] = useState<string | null>(
+    null,
   );
   const [announcements, setAnnouncements] = useState<Announcement[]>(() =>
     loadStored('announcements', INITIAL_ANNOUNCEMENTS),
@@ -522,6 +527,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setEvents(remoteEvents);
   };
 
+  const refreshPublicContentFromApi = async () => {
+    setPublicContentError(null);
+
+    try {
+      const { events: remoteEvents, members: remoteMembers } =
+        await fetchPublicContent();
+
+      setPublicEvents(remoteEvents);
+      setPublicMembers(remoteMembers);
+    } catch (error) {
+      setPublicContentError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to load public events and members.',
+      );
+      throw error;
+    }
+  };
+
   const loginAdminUser = async (email: string, password: string) => {
     setAuthLoading(true);
 
@@ -533,6 +557,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       await Promise.all([
         refreshMembersFromApi(),
         refreshEventsFromApi(),
+        refreshPublicContentFromApi(),
       ]);
     } finally {
       setAuthLoading(false);
@@ -544,6 +569,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsAuthenticated(false);
     setCurrentUser(employees[0]);
     setIsAdminPortalOpen(false);
+    void refreshPublicContentFromApi().catch((error) => {
+      console.error('Public content refresh failed after logout:', error);
+    });
   };
 
   useEffect(() => {
@@ -551,7 +579,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const restoreSession = async () => {
       if (!hasAdminToken()) {
-        setAuthLoading(false);
+        try {
+          await refreshPublicContentFromApi();
+        } catch (error) {
+          if (!cancelled) {
+            console.error('Public content restore failed:', error);
+          }
+        } finally {
+          if (!cancelled) {
+            setAuthLoading(false);
+          }
+        }
         return;
       }
 
@@ -567,9 +605,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           await Promise.all([
             refreshMembersFromApi(),
             refreshEventsFromApi(),
+            refreshPublicContentFromApi(),
           ]);
         } catch (error) {
-          console.error('Admin data restore failed:', error);
+          if (!cancelled) {
+            console.error('Admin data restore failed:', error);
+          }
         }
       } catch (error) {
         if (cancelled) return;
@@ -577,6 +618,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         if (error instanceof ApiError && error.status === 401) {
           clearAdminSession();
           setIsAuthenticated(false);
+
+          try {
+            await refreshPublicContentFromApi();
+          } catch (publicError) {
+            if (!cancelled) {
+              console.error('Public content restore failed:', publicError);
+            }
+          }
         } else {
           console.error('Admin session restore failed:', error);
         }
@@ -597,7 +646,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => saveStored('settings', settings), [settings]);
   useEffect(() => saveStored('social_links', socialLinks), [socialLinks]);
   useEffect(() => saveStored('statistics', statistics), [statistics]);
-  useEffect(() => saveStored('members', members), [members]);
   useEffect(
     () => saveStored('sw_categories', socialWorkCategories),
     [socialWorkCategories],
@@ -606,7 +654,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     () => saveStored('sw_activities', socialWorkActivities),
     [socialWorkActivities],
   );
-  useEffect(() => saveStored('events', events), [events]);
   useEffect(
     () => saveStored('announcements', announcements),
     [announcements],
@@ -1274,6 +1321,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         updateStatistic,
 
         members,
+        publicMembers,
         addMember,
         updateMember,
         archiveMember,
@@ -1281,6 +1329,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         bulkAddMembers,
 
         events,
+        publicEvents,
+        publicContentError,
         addEvent,
         updateEvent,
         archiveEvent,

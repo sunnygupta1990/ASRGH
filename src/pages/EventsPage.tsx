@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Calendar,
   Clock,
@@ -16,17 +16,28 @@ import { useApp } from '../context/AppContext';
 import { Event, EventStatus } from '../types';
 
 export const EventsPage: React.FC = () => {
-  const { events, selectedEntityId, setSelectedEntityId, openLightbox, setActivePage } = useApp();
+  const { publicEvents, selectedEntityId, setSelectedEntityId, openLightbox, setActivePage } = useApp();
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [activeModalEvent, setActiveModalEvent] = useState<Event | null>(() => {
     if (selectedEntityId) {
-      return events.find((e) => e.id === selectedEntityId) || null;
+      return publicEvents.find((e) => e.id === selectedEntityId) || null;
     }
     return null;
   });
 
-  const filteredEvents = events.filter((e) => {
+  useEffect(() => {
+    if (!selectedEntityId) {
+      setActiveModalEvent(null);
+      return;
+    }
+
+    setActiveModalEvent(
+      publicEvents.find((event) => event.id === selectedEntityId) ?? null,
+    );
+  }, [publicEvents, selectedEntityId]);
+
+  const filteredEvents = publicEvents.filter((e) => {
     if (e.display_status !== 'active') return false;
     if (statusFilter !== 'all' && e.status !== statusFilter) return false;
     return true;

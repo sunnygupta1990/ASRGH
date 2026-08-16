@@ -18,7 +18,7 @@ export const SocialWorkPage: React.FC = () => {
   const {
     socialWorkCategories,
     socialWorkActivities,
-    events,
+    publicEvents,
     selectedEntityId,
     setSelectedEntityId,
     openLightbox,
@@ -150,7 +150,7 @@ export const SocialWorkPage: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredActivities.map((act) => {
-            const relatedEvents = events.filter((e) => e.social_work_activity_id === act.id);
+            const relatedEvents = publicEvents.filter((e) => e.social_work_activity_id === act.id);
 
             return (
               <div
@@ -312,11 +312,11 @@ export const SocialWorkPage: React.FC = () => {
               {/* Related Events Section (Spec Section 15) */}
               <div>
                 <h4 className="text-xs font-bold uppercase text-slate-500 mb-3">Linked Community Events</h4>
-                {events.filter((e) => e.social_work_activity_id === activeModalActivity.id).length === 0 ? (
+                {publicEvents.filter((e) => e.social_work_activity_id === activeModalActivity.id).length === 0 ? (
                   <p className="text-xs text-slate-400 italic">No specific camps linked yet.</p>
                 ) : (
                   <div className="space-y-2">
-                    {events
+                    {publicEvents
                       .filter((e) => e.social_work_activity_id === activeModalActivity.id)
                       .map((evt) => (
                         <div

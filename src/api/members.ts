@@ -100,6 +100,11 @@ function toBackendMember(member: Partial<Member>) {
   };
 }
 
+export async function fetchPublicMembers(): Promise<Member[]> {
+  const response = await apiRequest<MemberListResponse>('/api/public/members');
+  return response.data.map(mapBackendMember);
+}
+
 export async function fetchAdminMembers(): Promise<Member[]> {
   const response = await apiRequest<MemberListResponse>('/api/members');
   return response.data.map(mapBackendMember);

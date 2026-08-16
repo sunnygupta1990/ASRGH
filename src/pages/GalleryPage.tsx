@@ -3,12 +3,12 @@ import { Image, Filter, Calendar, Sparkles, Folder } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 export const GalleryPage: React.FC = () => {
-  const { events, socialWorkActivities, openLightbox } = useApp();
+  const { publicEvents, socialWorkActivities, openLightbox } = useApp();
 
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedAlbum, setSelectedAlbum] = useState<string>('all');
 
-  // Collect all photos from events and social work activities
+  // Collect all photos from publicEvents and social work activities
   const allMediaPhotos: {
     id: string;
     url: string;
@@ -19,7 +19,7 @@ export const GalleryPage: React.FC = () => {
     category: string;
   }[] = [];
 
-  events.forEach((evt) => {
+  publicEvents.forEach((evt) => {
     const year = evt.event_date.split('-')[0] || '2026';
     evt.photos.forEach((p, idx) => {
       allMediaPhotos.push({
