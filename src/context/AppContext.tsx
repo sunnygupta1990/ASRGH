@@ -1,4 +1,14 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+// src/context/AppContext.tsx
+
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { ApiError } from '../api/client';
 import {
   clearAdminSession,
   getCurrentAdmin,
@@ -57,18 +67,14 @@ import {
   fetchAdminEvents,
   updateAdminEvent,
 } from '../api/events';
+import {
+  readNavigationState,
+  serializeNavigationState,
+} from '../utils/navigation';
+import type { NavigationState } from '../utils/navigation';
+import type { ActivePage } from '../utils/navigation';
 
-export type ActivePage =
-  | 'home'
-  | 'about'
-  | 'social_work'
-  | 'events'
-  | 'gallery'
-  | 'members'
-  | 'management'
-  | 'announcements'
-  | 'contact'
-  | 'admin';
+export type { ActivePage } from '../utils/navigation';
 
 interface LightboxState {
   photos: { url: string; caption?: string; title?: string }[];
@@ -77,7 +83,6 @@ interface LightboxState {
 }
 
 interface AppContextType {
-  // Navigation & UI
   activePage: ActivePage;
   setActivePage: (page: ActivePage) => void;
   selectedEntityId: string | null;
@@ -89,16 +94,22 @@ interface AppContextType {
   isSearchOpen: boolean;
   setIsSearchOpen: (open: boolean) => void;
   lightbox: LightboxState;
-  openLightbox: (photos: { url: string; caption?: string; title?: string }[], index?: number) => void;
+  openLightbox: (
+    photos: { url: string; caption?: string; title?: string }[],
+    index?: number,
+  ) => void;
   closeLightbox: () => void;
 
-  // Data & State
   settings: OrganizationSettings;
   updateSettings: (newSettings: Partial<OrganizationSettings>) => void;
   socialLinks: SocialLink[];
   updateSocialLinks: (links: SocialLink[]) => void;
   statistics: StatisticItem[];
-  updateStatistic: (id: string, overrideValue: number, isOverridden: boolean) => void;
+  updateStatistic: (
+    id: string,
+    overrideValue: number,
+    isOverridden: boolean,
+  ) => void;
 
   members: Member[];
   addMember: (member: Member) => Promise<void>;
@@ -119,7 +130,10 @@ interface AppContextType {
   socialWorkCategories: SocialWorkCategory[];
   socialWorkActivities: SocialWorkActivity[];
   addSocialWorkActivity: (act: SocialWorkActivity) => void;
-  updateSocialWorkActivity: (id: string, act: Partial<SocialWorkActivity>) => void;
+  updateSocialWorkActivity: (
+    id: string,
+    act: Partial<SocialWorkActivity>,
+  ) => void;
   archiveSocialWorkActivity: (id: string) => void;
   deleteSocialWorkActivity: (id: string) => void;
 
@@ -136,14 +150,34 @@ interface AppContextType {
   addAchievement: (a: Achievement) => void;
 
   contactSubmissions: ContactSubmission[];
-  addContactSubmission: (sub: Omit<ContactSubmission, 'id' | 'submission_code' | 'created_at' | 'status'>) => void;
-  updateContactStatus: (id: string, status: ContactSubmission['status'], assignedTo?: string, notes?: string) => void;
+  addContactSubmission: (
+    sub: Omit<
+      ContactSubmission,
+      'id' | 'submission_code' | 'created_at' | 'status'
+    >,
+  ) => void;
+  updateContactStatus: (
+    id: string,
+    status: ContactSubmission['status'],
+    assignedTo?: string,
+    notes?: string,
+  ) => void;
 
   notifications: NotificationRecord[];
-  sendNotification: (notif: Omit<NotificationRecord, 'id' | 'sent_at' | 'sender_name' | 'targeted_devices'>) => void;
+  sendNotification: (
+    notif: Omit<
+      NotificationRecord,
+      'id' | 'sent_at' | 'sender_name' | 'targeted_devices'
+    >,
+  ) => void;
 
   auditLogs: AuditLog[];
-  addAuditLog: (action: string, module: string, details: string, entityId?: string) => void;
+  addAuditLog: (
+    action: string,
+    module: string,
+    details: string,
+    entityId?: string,
+  ) => void;
 
   rejectedRecords: RejectedRecord[];
   addRejectedRecords: (records: RejectedRecord[]) => void;
@@ -152,7 +186,6 @@ interface AppContextType {
   importBatches: ImportBatch[];
   addImportBatch: (batch: ImportBatch) => void;
 
-  // Admin & Auth Mode
   isAuthenticated: boolean;
   authLoading: boolean;
   loginAdminUser: (email: string, password: string) => Promise<void>;
@@ -191,7 +224,10 @@ function saveStored<T>(key: string, value: T): void {
   }
 }
 
-function mapAuthUserToEmployee(user: AuthUser, fallback: Employee): Employee {
+function mapAuthUserToEmployee(
+  user: AuthUser,
+  fallback: Employee,
+): Employee {
   return {
     ...fallback,
     id: user.id,
@@ -205,15 +241,130 @@ function mapAuthUserToEmployee(user: AuthUser, fallback: Employee): Employee {
   };
 }
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Navigation & UI State
-  const [activePage, setActivePage] = useState<ActivePage>('home');
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [textSize, setTextSize] = useState<TextScale>(() => loadStored('text_size', 'normal'));
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [initialNavigation] = useState<NavigationState>(() =>
+    readNavigationState(),
+  );
+  const navigationRef = useRef<NavigationState>(initialNavigation);
+  const navigationWriteScheduledRef = useRef(false);
+
+  const [activePage, setActivePageState] = useState<ActivePage>(
+    initialNavigation.activePage,
+  );
+  const [selectedEntityId, setSelectedEntityIdState] = useState<string | null>(
+    initialNavigation.selectedEntityId,
+  );
+  const [textSize, setTextSize] = useState<TextScale>(() =>
+    loadStored('text_size', 'normal'),
+  );
   const [language, setLanguage] = useState<AppLanguage>('en');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isAdminPortalOpen, setIsAdminPortalOpen] = useState(false);
-  const [activeAdminTab, setActiveAdminTab] = useState('dashboard');
+  const [isAdminPortalOpen, setIsAdminPortalOpenState] = useState(
+    initialNavigation.isAdminPortalOpen,
+  );
+  const [activeAdminTab, setActiveAdminTabState] = useState(
+    initialNavigation.activeAdminTab,
+  );
+
+  const syncNavigationToUrl = useCallback(() => {
+    if (navigationWriteScheduledRef.current) {
+      return;
+    }
+
+    navigationWriteScheduledRef.current = true;
+
+    queueMicrotask(() => {
+      navigationWriteScheduledRef.current = false;
+
+      const hash = serializeNavigationState(navigationRef.current);
+      const currentUrl =
+        window.location.pathname +
+        window.location.search +
+        window.location.hash;
+      const nextUrl =
+        window.location.pathname +
+        window.location.search +
+        hash;
+
+      if (currentUrl === nextUrl) {
+        return;
+      }
+
+      window.history.pushState(null, '', nextUrl);
+    });
+  }, []);
+
+  const setActivePage = useCallback(
+    (page: ActivePage) => {
+      navigationRef.current = {
+        ...navigationRef.current,
+        activePage: page,
+      };
+      setActivePageState(page);
+      syncNavigationToUrl();
+    },
+    [syncNavigationToUrl],
+  );
+
+  const setSelectedEntityId = useCallback(
+    (id: string | null) => {
+      navigationRef.current = {
+        ...navigationRef.current,
+        selectedEntityId: id,
+      };
+      setSelectedEntityIdState(id);
+      syncNavigationToUrl();
+    },
+    [syncNavigationToUrl],
+  );
+
+  const setIsAdminPortalOpen = useCallback(
+    (open: boolean) => {
+      navigationRef.current = {
+        ...navigationRef.current,
+        isAdminPortalOpen: open,
+      };
+      setIsAdminPortalOpenState(open);
+      syncNavigationToUrl();
+    },
+    [syncNavigationToUrl],
+  );
+
+  const setActiveAdminTab = useCallback(
+    (tab: string) => {
+      const normalizedTab = tab.trim() || 'dashboard';
+
+      navigationRef.current = {
+        ...navigationRef.current,
+        activeAdminTab: normalizedTab,
+      };
+      setActiveAdminTabState(normalizedTab);
+      syncNavigationToUrl();
+    },
+    [syncNavigationToUrl],
+  );
+
+  useEffect(() => {
+    const restoreNavigation = () => {
+      const next = readNavigationState();
+
+      navigationRef.current = next;
+      setActivePageState(next.activePage);
+      setSelectedEntityIdState(next.selectedEntityId);
+      setIsAdminPortalOpenState(next.isAdminPortalOpen);
+      setActiveAdminTabState(next.activeAdminTab);
+    };
+
+    window.addEventListener('popstate', restoreNavigation);
+    window.addEventListener('hashchange', restoreNavigation);
+
+    return () => {
+      window.removeEventListener('popstate', restoreNavigation);
+      window.removeEventListener('hashchange', restoreNavigation);
+    };
+  }, []);
 
   const [lightbox, setLightbox] = useState<LightboxState>({
     photos: [],
@@ -221,102 +372,142 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isOpen: false,
   });
 
-  // Entities State
-  const [settings, setSettings] = useState<OrganizationSettings>(() => loadStored('settings', INITIAL_SETTINGS));
-  const [socialLinks, setSocialLinks] = useState<SocialLink[]>(() => loadStored('social_links', INITIAL_SOCIAL_LINKS));
-  const [statistics, setStatistics] = useState<StatisticItem[]>(() => loadStored('statistics', INITIAL_STATISTICS));
-  const [members, setMembers] = useState<Member[]>(() => loadStored('members', INITIAL_MEMBERS));
-  const [socialWorkCategories, setSocialWorkCategories] = useState<SocialWorkCategory[]>(() =>
-    loadStored('sw_categories', INITIAL_SOCIAL_WORK_CATEGORIES)
+  const [settings, setSettings] = useState<OrganizationSettings>(() =>
+    loadStored('settings', INITIAL_SETTINGS),
   );
-  const [socialWorkActivities, setSocialWorkActivities] = useState<SocialWorkActivity[]>(() =>
-    loadStored('sw_activities', INITIAL_SOCIAL_WORK_ACTIVITIES)
+  const [socialLinks, setSocialLinks] = useState<SocialLink[]>(() =>
+    loadStored('social_links', INITIAL_SOCIAL_LINKS),
   );
-  const [events, setEvents] = useState<Event[]>(() => loadStored('events', INITIAL_EVENTS));
-  const [announcements, setAnnouncements] = useState<Announcement[]>(() => loadStored('announcements', INITIAL_ANNOUNCEMENTS));
-  const [milestones, setMilestones] = useState<Milestone[]>(() => loadStored('milestones', INITIAL_MILESTONES));
-  const [achievements, setAchievements] = useState<Achievement[]>(() => loadStored('achievements', INITIAL_ACHIEVEMENTS));
-  const [contactSubmissions, setContactSubmissions] = useState<ContactSubmission[]>(() =>
-    loadStored('contacts', INITIAL_CONTACT_SUBMISSIONS)
+  const [statistics, setStatistics] = useState<StatisticItem[]>(() =>
+    loadStored('statistics', INITIAL_STATISTICS),
   );
-  const [notifications, setNotifications] = useState<NotificationRecord[]>(() => loadStored('notifications', []));
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => loadStored('audit_logs', INITIAL_AUDIT_LOGS));
-  const UAT_REJECTED_RECORDS: RejectedRecord[] = [
-  {
-    id: 'rej-uat-001',
-    batch_id: 'BATCH-MEM-2026-004',
-    module: 'members',
-    row_number: 7,
-    record_reference: 'MEM-0016',
-    raw_data: { 'Member Code': 'MEM-0016', 'First Name': '', 'Last Name': 'Mehta', 'Member Category': 'Life Member' },
-    error_message: 'Missing required field: First Name.',
-    suggested_fix: 'Enter the member first name and upload the corrected file.',
-    rejected_at: '2026-08-12 11:24',
-    status: 'rejected',
-  },
-  {
-    id: 'rej-uat-002',
-    batch_id: 'BATCH-MEM-2026-004',
-    module: 'members',
-    row_number: 11,
-    record_reference: 'MEM-0003',
-    raw_data: { 'Member Code': 'MEM-0003', 'First Name': 'Priya', 'Last Name': 'Gupta' },
-    error_message: 'Duplicate Member Code already exists.',
-    suggested_fix: 'Use a new unique Member Code.',
-    rejected_at: '2026-08-12 11:24',
-    status: 'rejected',
-  },
-  {
-    id: 'rej-uat-003',
-    batch_id: 'BATCH-EVT-2026-002',
-    module: 'events',
-    row_number: 5,
-    record_reference: 'EVT-2026-009',
-    raw_data: { 'Event Code': 'EVT-2026-009', 'Event Title': 'Medical Camp', 'Event Date': 'not-a-date' },
-    error_message: 'Event Date is not a valid date.',
-    suggested_fix: 'Use YYYY-MM-DD format.',
-    rejected_at: '2026-08-10 15:05',
-    status: 'rejected',
-  },
-];
-const [rejectedRecords, setRejectedRecords] = useState<RejectedRecord[]>(() =>
-  loadStored('rejected_records', UAT_REJECTED_RECORDS)
-);
-  const UAT_IMPORT_BATCHES: ImportBatch[] = [
-  {
-    id: 'batch-uat-001',
-    batch_code: 'BATCH-MEM-2026-004',
-    module_name: 'Members',
-    file_name: 'members_august_2026.xlsx',
-    total_rows: 14,
-    passed_rows: 12,
-    failed_rows: 2,
-    warning_rows: 1,
-    uploaded_by: 'Anil Bansal',
-    uploaded_at: '2026-08-12 11:24',
-    status: 'completed',
-  },
-  {
-    id: 'batch-uat-002',
-    batch_code: 'BATCH-EVT-2026-002',
-    module_name: 'Events',
-    file_name: 'events_august_2026.xlsx',
-    total_rows: 8,
-    passed_rows: 7,
-    failed_rows: 1,
-    warning_rows: 0,
-    uploaded_by: 'Anil Bansal',
-    uploaded_at: '2026-08-10 15:05',
-    status: 'completed',
-  },
-];
-const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
-  loadStored('import_batches', UAT_IMPORT_BATCHES)
-);
+  const [members, setMembers] = useState<Member[]>(() =>
+    loadStored('members', INITIAL_MEMBERS),
+  );
+  const [socialWorkCategories, setSocialWorkCategories] = useState<
+    SocialWorkCategory[]
+  >(() => loadStored('sw_categories', INITIAL_SOCIAL_WORK_CATEGORIES));
+  const [socialWorkActivities, setSocialWorkActivities] = useState<
+    SocialWorkActivity[]
+  >(() => loadStored('sw_activities', INITIAL_SOCIAL_WORK_ACTIVITIES));
+  const [events, setEvents] = useState<Event[]>(() =>
+    loadStored('events', INITIAL_EVENTS),
+  );
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() =>
+    loadStored('announcements', INITIAL_ANNOUNCEMENTS),
+  );
+  const [milestones, setMilestones] = useState<Milestone[]>(() =>
+    loadStored('milestones', INITIAL_MILESTONES),
+  );
+  const [achievements, setAchievements] = useState<Achievement[]>(() =>
+    loadStored('achievements', INITIAL_ACHIEVEMENTS),
+  );
+  const [contactSubmissions, setContactSubmissions] = useState<
+    ContactSubmission[]
+  >(() => loadStored('contacts', INITIAL_CONTACT_SUBMISSIONS));
+  const [notifications, setNotifications] = useState<NotificationRecord[]>(
+    () => loadStored('notifications', []),
+  );
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() =>
+    loadStored('audit_logs', INITIAL_AUDIT_LOGS),
+  );
 
-  // Admin users & RBAC
-  const [roles] = useState<Role[]>(() => loadStored('roles', INITIAL_ROLES));
-  const [employees] = useState<Employee[]>(() => loadStored('employees', INITIAL_EMPLOYEES));
+  const UAT_REJECTED_RECORDS: RejectedRecord[] = [
+    {
+      id: 'rej-uat-001',
+      batch_id: 'BATCH-MEM-2026-004',
+      module: 'members',
+      row_number: 7,
+      record_reference: 'MEM-0016',
+      raw_data: {
+        'Member Code': 'MEM-0016',
+        'First Name': '',
+        'Last Name': 'Mehta',
+        'Member Category': 'Life Member',
+      },
+      error_message: 'Missing required field: First Name.',
+      suggested_fix:
+        'Enter the member first name and upload the corrected file.',
+      rejected_at: '2026-08-12 11:24',
+      status: 'rejected',
+    },
+    {
+      id: 'rej-uat-002',
+      batch_id: 'BATCH-MEM-2026-004',
+      module: 'members',
+      row_number: 11,
+      record_reference: 'MEM-0003',
+      raw_data: {
+        'Member Code': 'MEM-0003',
+        'First Name': 'Priya',
+        'Last Name': 'Gupta',
+      },
+      error_message: 'Duplicate Member Code already exists.',
+      suggested_fix: 'Use a new unique Member Code.',
+      rejected_at: '2026-08-12 11:24',
+      status: 'rejected',
+    },
+    {
+      id: 'rej-uat-003',
+      batch_id: 'BATCH-EVT-2026-002',
+      module: 'events',
+      row_number: 5,
+      record_reference: 'EVT-2026-009',
+      raw_data: {
+        'Event Code': 'EVT-2026-009',
+        'Event Title': 'Medical Camp',
+        'Event Date': 'not-a-date',
+      },
+      error_message: 'Event Date is not a valid date.',
+      suggested_fix: 'Use YYYY-MM-DD format.',
+      rejected_at: '2026-08-10 15:05',
+      status: 'rejected',
+    },
+  ];
+
+  const [rejectedRecords, setRejectedRecords] = useState<
+    RejectedRecord[]
+  >(() => loadStored('rejected_records', UAT_REJECTED_RECORDS));
+
+  const UAT_IMPORT_BATCHES: ImportBatch[] = [
+    {
+      id: 'batch-uat-001',
+      batch_code: 'BATCH-MEM-2026-004',
+      module_name: 'Members',
+      file_name: 'members_august_2026.xlsx',
+      total_rows: 14,
+      passed_rows: 12,
+      failed_rows: 2,
+      warning_rows: 1,
+      uploaded_by: 'Anil Bansal',
+      uploaded_at: '2026-08-12 11:24',
+      status: 'completed',
+    },
+    {
+      id: 'batch-uat-002',
+      batch_code: 'BATCH-EVT-2026-002',
+      module_name: 'Events',
+      file_name: 'events_august_2026.xlsx',
+      total_rows: 8,
+      passed_rows: 7,
+      failed_rows: 1,
+      warning_rows: 0,
+      uploaded_by: 'Anil Bansal',
+      uploaded_at: '2026-08-10 15:05',
+      status: 'completed',
+    },
+  ];
+
+  const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
+    loadStored('import_batches', UAT_IMPORT_BATCHES),
+  );
+
+  const [roles] = useState<Role[]>(() =>
+    loadStored('roles', INITIAL_ROLES),
+  );
+  const [employees] = useState<Employee[]>(() =>
+    loadStored('employees', INITIAL_EMPLOYEES),
+  );
   const [currentUser, setCurrentUser] = useState<Employee>(employees[0]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -333,10 +524,12 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
 
   const loginAdminUser = async (email: string, password: string) => {
     setAuthLoading(true);
+
     try {
       const user = await loginAdmin(email, password);
       setCurrentUser(mapAuthUserToEmployee(user, employees[0]));
       setIsAuthenticated(true);
+
       await Promise.all([
         refreshMembersFromApi(),
         refreshEventsFromApi(),
@@ -364,50 +557,91 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
 
       try {
         const user = await getCurrentAdmin();
+
         if (cancelled) return;
+
         setCurrentUser(mapAuthUserToEmployee(user, employees[0]));
         setIsAuthenticated(true);
-        await Promise.all([
-          refreshMembersFromApi(),
-          refreshEventsFromApi(),
-        ]);
-      } catch {
-        clearAdminSession();
-        if (!cancelled) setIsAuthenticated(false);
+
+        try {
+          await Promise.all([
+            refreshMembersFromApi(),
+            refreshEventsFromApi(),
+          ]);
+        } catch (error) {
+          console.error('Admin data restore failed:', error);
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        if (error instanceof ApiError && error.status === 401) {
+          clearAdminSession();
+          setIsAuthenticated(false);
+        } else {
+          console.error('Admin session restore failed:', error);
+        }
       } finally {
-        if (!cancelled) setAuthLoading(false);
+        if (!cancelled) {
+          setAuthLoading(false);
+        }
       }
     };
 
     void restoreSession();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Persist changes
   useEffect(() => saveStored('settings', settings), [settings]);
   useEffect(() => saveStored('social_links', socialLinks), [socialLinks]);
   useEffect(() => saveStored('statistics', statistics), [statistics]);
   useEffect(() => saveStored('members', members), [members]);
-  useEffect(() => saveStored('sw_categories', socialWorkCategories), [socialWorkCategories]);
-  useEffect(() => saveStored('sw_activities', socialWorkActivities), [socialWorkActivities]);
+  useEffect(
+    () => saveStored('sw_categories', socialWorkCategories),
+    [socialWorkCategories],
+  );
+  useEffect(
+    () => saveStored('sw_activities', socialWorkActivities),
+    [socialWorkActivities],
+  );
   useEffect(() => saveStored('events', events), [events]);
-  useEffect(() => saveStored('announcements', announcements), [announcements]);
+  useEffect(
+    () => saveStored('announcements', announcements),
+    [announcements],
+  );
   useEffect(() => saveStored('milestones', milestones), [milestones]);
   useEffect(() => saveStored('achievements', achievements), [achievements]);
-  useEffect(() => saveStored('contacts', contactSubmissions), [contactSubmissions]);
-  useEffect(() => saveStored('notifications', notifications), [notifications]);
+  useEffect(
+    () => saveStored('contacts', contactSubmissions),
+    [contactSubmissions],
+  );
+  useEffect(
+    () => saveStored('notifications', notifications),
+    [notifications],
+  );
   useEffect(() => saveStored('audit_logs', auditLogs), [auditLogs]);
-  useEffect(() => saveStored('rejected_records', rejectedRecords), [rejectedRecords]);
-  useEffect(() => saveStored('import_batches', importBatches), [importBatches]);
+  useEffect(
+    () => saveStored('rejected_records', rejectedRecords),
+    [rejectedRecords],
+  );
+  useEffect(
+    () => saveStored('import_batches', importBatches),
+    [importBatches],
+  );
   useEffect(() => saveStored('text_size', textSize), [textSize]);
 
-  // Lightbox helpers
-  const openLightbox = (photos: { url: string; caption?: string; title?: string }[], index = 0) => {
+  const openLightbox = (
+    photos: { url: string; caption?: string; title?: string }[],
+    index = 0,
+  ) => {
     setLightbox({
       photos,
-      currentIndex: Math.max(0, Math.min(index, photos.length - 1)),
+      currentIndex: Math.max(
+        0,
+        Math.min(index, photos.length - 1),
+      ),
       isOpen: true,
     });
   };
@@ -416,10 +650,16 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
     setLightbox((prev) => ({ ...prev, isOpen: false }));
   };
 
-  // Audit logger
-  const addAuditLog = (action: string, module: string, details: string, entityId?: string) => {
+  const addAuditLog = (
+    action: string,
+    module: string,
+    details: string,
+    entityId?: string,
+  ) => {
     const newLog: AuditLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      id: `log-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 4)}`,
       actor_name: currentUser.full_name,
       actor_role: currentUser.role_name,
       action,
@@ -428,31 +668,64 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
       details,
       timestamp: new Date().toLocaleString(),
     };
+
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
-  // Settings
-  const updateSettings = (newSettings: Partial<OrganizationSettings>) => {
+  const updateSettings = (
+    newSettings: Partial<OrganizationSettings>,
+  ) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
-    addAuditLog('SETTINGS_UPDATE', 'settings', 'Updated organization settings and contact info');
+    addAuditLog(
+      'SETTINGS_UPDATE',
+      'settings',
+      'Updated organization settings and contact info',
+    );
   };
 
   const updateSocialLinks = (links: SocialLink[]) => {
     setSocialLinks(links);
-    addAuditLog('SOCIAL_LINKS_UPDATE', 'settings', 'Updated social links configuration');
-  };
-
-  const updateStatistic = (id: string, overrideValue: number, isOverridden: boolean) => {
-    setStatistics((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, value: overrideValue, is_overridden: isOverridden } : s))
+    addAuditLog(
+      'SOCIAL_LINKS_UPDATE',
+      'settings',
+      'Updated social links configuration',
     );
-    addAuditLog('STATISTIC_OVERRIDE', 'statistics', `Updated statistics metric value to ${overrideValue}`);
   };
 
-  // Members Actions
+  const updateStatistic = (
+    id: string,
+    overrideValue: number,
+    isOverridden: boolean,
+  ) => {
+    setStatistics((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              value: overrideValue,
+              is_overridden: isOverridden,
+            }
+          : s,
+      ),
+    );
+
+    addAuditLog(
+      'STATISTIC_OVERRIDE',
+      'statistics',
+      `Updated statistics metric value to ${overrideValue}`,
+    );
+  };
+
   const addMember = async (member: Member) => {
-    const saved = isAuthenticated ? await createAdminMember(member) : member;
-    setMembers((prev) => [saved, ...prev.filter((m) => m.id !== member.id)]);
+    const saved = isAuthenticated
+      ? await createAdminMember(member)
+      : member;
+
+    setMembers((prev) => [
+      saved,
+      ...prev.filter((m) => m.id !== member.id),
+    ]);
+
     addAuditLog(
       'MEMBER_CREATE',
       'members',
@@ -461,198 +734,379 @@ const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
     );
   };
 
-  const updateMember = async (id: string, updated: Partial<Member>) => {
+  const updateMember = async (
+    id: string,
+    updated: Partial<Member>,
+  ) => {
     const saved = isAuthenticated
       ? await updateAdminMember(id, updated)
-      : ({ ...members.find((m) => m.id === id), ...updated } as Member);
+      : ({
+          ...members.find((m) => m.id === id),
+          ...updated,
+        } as Member);
 
-    setMembers((prev) => prev.map((m) => (m.id === id ? saved : m)));
-    addAuditLog('MEMBER_UPDATE', 'members', `Updated member: ${saved.display_name || id}`, id);
+    setMembers((prev) =>
+      prev.map((m) => (m.id === id ? saved : m)),
+    );
+
+    addAuditLog(
+      'MEMBER_UPDATE',
+      'members',
+      `Updated member: ${saved.display_name || id}`,
+      id,
+    );
   };
 
   const archiveMember = async (id: string) => {
     const saved = isAuthenticated
       ? await archiveAdminMember(id)
-      : ({ ...members.find((m) => m.id === id), status: 'archived' } as Member);
+      : ({
+          ...members.find((m) => m.id === id),
+          status: 'archived',
+        } as Member);
 
-    setMembers((prev) => prev.map((m) => (m.id === id ? saved : m)));
-    addAuditLog('MEMBER_ARCHIVE', 'members', `Archived member record: ${id}`, id);
+    setMembers((prev) =>
+      prev.map((m) => (m.id === id ? saved : m)),
+    );
+
+    addAuditLog(
+      'MEMBER_ARCHIVE',
+      'members',
+      `Archived member record: ${id}`,
+      id,
+    );
   };
 
   const deleteMember = async (id: string) => {
     if (isAuthenticated) {
       await deleteAdminMember(id);
     }
-    setMembers((prev) => prev.filter((m) => m.id !== id));
-    addAuditLog('MEMBER_DELETE', 'members', `Deleted member record: ${id}`, id);
+
+    setMembers((prev) =>
+      prev.filter((m) => m.id !== id),
+    );
+
+    addAuditLog(
+      'MEMBER_DELETE',
+      'members',
+      `Deleted member record: ${id}`,
+      id,
+    );
   };
 
   const bulkAddMembers = (newMembers: Member[]) => {
     setMembers((prev) => [...newMembers, ...prev]);
-    addAuditLog('MEMBER_BULK_IMPORT', 'members', `Imported ${newMembers.length} member records via Excel validation engine.`);
+
+    addAuditLog(
+      'MEMBER_BULK_IMPORT',
+      'members',
+      `Imported ${newMembers.length} member records via Excel validation engine.`,
+    );
   };
 
-// Events Actions
-const addEvent = async (event: Event) => {
-  const saved = isAuthenticated
-    ? await createAdminEvent(event)
-    : event;
+  const addEvent = async (event: Event) => {
+    const saved = isAuthenticated
+      ? await createAdminEvent(event)
+      : event;
 
-  setEvents((prev) => [saved, ...prev.filter((e) => e.id !== event.id)]);
+    setEvents((prev) => [
+      saved,
+      ...prev.filter((e) => e.id !== event.id),
+    ]);
 
-  addAuditLog(
-    'EVENT_CREATE',
-    'events',
-    `Created event: ${saved.title} (${saved.event_code})`,
-    saved.id,
-  );
-};
+    addAuditLog(
+      'EVENT_CREATE',
+      'events',
+      `Created event: ${saved.title} (${saved.event_code})`,
+      saved.id,
+    );
+  };
 
-const updateEvent = async (id: string, updated: Partial<Event>) => {
-  const saved = isAuthenticated
-    ? await updateAdminEvent(id, updated)
-    : ({ ...events.find((e) => e.id === id), ...updated } as Event);
+  const updateEvent = async (
+    id: string,
+    updated: Partial<Event>,
+  ) => {
+    const saved = isAuthenticated
+      ? await updateAdminEvent(id, updated)
+      : ({
+          ...events.find((e) => e.id === id),
+          ...updated,
+        } as Event);
 
-  setEvents((prev) =>
-    prev.map((e) => (e.id === id ? saved : e)),
-  );
+    setEvents((prev) =>
+      prev.map((e) => (e.id === id ? saved : e)),
+    );
 
-  addAuditLog(
-    'EVENT_UPDATE',
-    'events',
-    `Updated event: ${saved.title || id}`,
-    id,
-  );
-};
+    addAuditLog(
+      'EVENT_UPDATE',
+      'events',
+      `Updated event: ${saved.title || id}`,
+      id,
+    );
+  };
 
-const archiveEvent = async (id: string) => {
-  const saved = isAuthenticated
-    ? await archiveAdminEvent(id)
-    : ({
-        ...events.find((e) => e.id === id),
-        display_status: 'archived',
-      } as Event);
+  const archiveEvent = async (id: string) => {
+    const saved = isAuthenticated
+      ? await archiveAdminEvent(id)
+      : ({
+          ...events.find((e) => e.id === id),
+          display_status: 'archived',
+        } as Event);
 
-  setEvents((prev) =>
-    prev.map((e) => (e.id === id ? saved : e)),
-  );
+    setEvents((prev) =>
+      prev.map((e) => (e.id === id ? saved : e)),
+    );
 
-  addAuditLog(
-    'EVENT_ARCHIVE',
-    'events',
-    `Archived event: ${id}`,
-    id,
-  );
-};
+    addAuditLog(
+      'EVENT_ARCHIVE',
+      'events',
+      `Archived event: ${id}`,
+      id,
+    );
+  };
 
-const deleteEvent = async (id: string) => {
-  setEvents((prev) => prev.filter((e) => e.id !== id));
+  const deleteEvent = async (id: string) => {
+    setEvents((prev) =>
+      prev.filter((e) => e.id !== id),
+    );
 
-  addAuditLog(
-    'EVENT_DELETE',
-    'events',
-    `Removed event from current view: ${id}`,
-    id,
-  );
-};
-
+    addAuditLog(
+      'EVENT_DELETE',
+      'events',
+      `Removed event from current view: ${id}`,
+      id,
+    );
+  };
 
   const bulkAddEvents = (newEvents: Event[]) => {
     setEvents((prev) => [...newEvents, ...prev]);
-    addAuditLog('EVENT_BULK_IMPORT', 'events', `Imported ${newEvents.length} event records via Excel validation engine.`);
-  };
 
-  const addEventPhoto = (eventId: string, photo: EventPhoto) => {
-    setEvents((prev) =>
-      prev.map((e) => (e.id === eventId ? { ...e, photos: [photo, ...(e.photos || [])] } : e))
+    addAuditLog(
+      'EVENT_BULK_IMPORT',
+      'events',
+      `Imported ${newEvents.length} event records via Excel validation engine.`,
     );
-    addAuditLog('EVENT_PHOTO_UPLOAD', 'gallery', `Uploaded new photo to event: ${eventId}`, eventId);
   };
 
-  const addEventPhotos = (eventId: string, photos: EventPhoto[]) => {
-    if (!photos.length) return;
+  const addEventPhoto = (
+    eventId: string,
+    photo: EventPhoto,
+  ) => {
     setEvents((prev) =>
       prev.map((e) =>
         e.id === eventId
           ? {
               ...e,
-              photos: [...photos, ...(e.photos || [])].map((photo, index) => ({
-                ...photo,
-                display_order: index + 1,
-              })),
+              photos: [photo, ...(e.photos || [])],
             }
-          : e
-      )
+          : e,
+      ),
     );
+
+    addAuditLog(
+      'EVENT_PHOTO_UPLOAD',
+      'gallery',
+      `Uploaded new photo to event: ${eventId}`,
+      eventId,
+    );
+  };
+
+  const addEventPhotos = (
+    eventId: string,
+    photos: EventPhoto[],
+  ) => {
+    if (!photos.length) return;
+
+    setEvents((prev) =>
+      prev.map((e) =>
+        e.id === eventId
+          ? {
+              ...e,
+              photos: [...photos, ...(e.photos || [])].map(
+                (photo, index) => ({
+                  ...photo,
+                  display_order: index + 1,
+                }),
+              ),
+            }
+          : e,
+      ),
+    );
+
     addAuditLog(
       'EVENT_PHOTOS_UPLOAD',
       'gallery',
-      `Uploaded ${photos.length} photo${photos.length === 1 ? '' : 's'} to event album: ${eventId}`,
-      eventId
+      `Uploaded ${photos.length} photo${
+        photos.length === 1 ? '' : 's'
+      } to event album: ${eventId}`,
+      eventId,
     );
   };
 
-  // Social Work Actions
-  const addSocialWorkActivity = (act: SocialWorkActivity) => {
+  const addSocialWorkActivity = (
+    act: SocialWorkActivity,
+  ) => {
     setSocialWorkActivities((prev) => [act, ...prev]);
-    addAuditLog('SOCIAL_WORK_CREATE', 'social_work', `Created activity: ${act.title} (${act.activity_code})`, act.id);
+
+    addAuditLog(
+      'SOCIAL_WORK_CREATE',
+      'social_work',
+      `Created activity: ${act.title} (${act.activity_code})`,
+      act.id,
+    );
   };
 
-  const updateSocialWorkActivity = (id: string, updated: Partial<SocialWorkActivity>) => {
-    setSocialWorkActivities((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated } : a)));
-    addAuditLog('SOCIAL_WORK_UPDATE', 'social_work', `Updated activity: ${updated.title || id}`, id);
+  const updateSocialWorkActivity = (
+    id: string,
+    updated: Partial<SocialWorkActivity>,
+  ) => {
+    setSocialWorkActivities((prev) =>
+      prev.map((a) =>
+        a.id === id ? { ...a, ...updated } : a,
+      ),
+    );
+
+    addAuditLog(
+      'SOCIAL_WORK_UPDATE',
+      'social_work',
+      `Updated activity: ${updated.title || id}`,
+      id,
+    );
   };
 
   const archiveSocialWorkActivity = (id: string) => {
-    setSocialWorkActivities((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'archived' } : a)));
-    addAuditLog('SOCIAL_WORK_ARCHIVE', 'social_work', `Archived activity: ${id}`, id);
+    setSocialWorkActivities((prev) =>
+      prev.map((a) =>
+        a.id === id
+          ? { ...a, status: 'archived' }
+          : a,
+      ),
+    );
+
+    addAuditLog(
+      'SOCIAL_WORK_ARCHIVE',
+      'social_work',
+      `Archived activity: ${id}`,
+      id,
+    );
   };
 
   const deleteSocialWorkActivity = (id: string) => {
-    setSocialWorkActivities((prev) => prev.filter((a) => a.id !== id));
-    addAuditLog('SOCIAL_WORK_DELETE', 'social_work', `Deleted activity: ${id}`, id);
+    setSocialWorkActivities((prev) =>
+      prev.filter((a) => a.id !== id),
+    );
+
+    addAuditLog(
+      'SOCIAL_WORK_DELETE',
+      'social_work',
+      `Deleted activity: ${id}`,
+      id,
+    );
   };
 
-  // Announcements Actions
   const addAnnouncement = (ann: Announcement) => {
     setAnnouncements((prev) => [ann, ...prev]);
-    addAuditLog('ANNOUNCEMENT_CREATE', 'announcements', `Created announcement: ${ann.title} (${ann.announcement_code})`, ann.id);
+
+    addAuditLog(
+      'ANNOUNCEMENT_CREATE',
+      'announcements',
+      `Created announcement: ${ann.title} (${ann.announcement_code})`,
+      ann.id,
+    );
   };
 
-  const updateAnnouncement = (id: string, updated: Partial<Announcement>) => {
-    setAnnouncements((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated } : a)));
-    addAuditLog('ANNOUNCEMENT_UPDATE', 'announcements', `Updated announcement: ${updated.title || id}`, id);
+  const updateAnnouncement = (
+    id: string,
+    updated: Partial<Announcement>,
+  ) => {
+    setAnnouncements((prev) =>
+      prev.map((a) =>
+        a.id === id ? { ...a, ...updated } : a,
+      ),
+    );
+
+    addAuditLog(
+      'ANNOUNCEMENT_UPDATE',
+      'announcements',
+      `Updated announcement: ${updated.title || id}`,
+      id,
+    );
   };
 
   const archiveAnnouncement = (id: string) => {
-    setAnnouncements((prev) => prev.map((a) => (a.id === id ? { ...a, status: 'archived' } : a)));
-    addAuditLog('ANNOUNCEMENT_ARCHIVE', 'announcements', `Archived announcement: ${id}`, id);
+    setAnnouncements((prev) =>
+      prev.map((a) =>
+        a.id === id
+          ? { ...a, status: 'archived' }
+          : a,
+      ),
+    );
+
+    addAuditLog(
+      'ANNOUNCEMENT_ARCHIVE',
+      'announcements',
+      `Archived announcement: ${id}`,
+      id,
+    );
   };
 
   const deleteAnnouncement = (id: string) => {
-    setAnnouncements((prev) => prev.filter((a) => a.id !== id));
-    addAuditLog('ANNOUNCEMENT_DELETE', 'announcements', `Deleted announcement: ${id}`, id);
+    setAnnouncements((prev) =>
+      prev.filter((a) => a.id !== id),
+    );
+
+    addAuditLog(
+      'ANNOUNCEMENT_DELETE',
+      'announcements',
+      `Deleted announcement: ${id}`,
+      id,
+    );
   };
 
-  const bulkAddAnnouncements = (anns: Announcement[]) => {
+  const bulkAddAnnouncements = (
+    anns: Announcement[],
+  ) => {
     setAnnouncements((prev) => [...anns, ...prev]);
-    addAuditLog('ANNOUNCEMENT_BULK_IMPORT', 'announcements', `Imported ${anns.length} announcements.`);
+
+    addAuditLog(
+      'ANNOUNCEMENT_BULK_IMPORT',
+      'announcements',
+      `Imported ${anns.length} announcements.`,
+    );
   };
 
-  // Milestones & Achievements
   const addMilestone = (m: Milestone) => {
     setMilestones((prev) => [m, ...prev]);
-    addAuditLog('MILESTONE_CREATE', 'about', `Created milestone: ${m.title}`, m.id);
+
+    addAuditLog(
+      'MILESTONE_CREATE',
+      'about',
+      `Created milestone: ${m.title}`,
+      m.id,
+    );
   };
 
   const addAchievement = (a: Achievement) => {
     setAchievements((prev) => [a, ...prev]);
-    addAuditLog('ACHIEVEMENT_CREATE', 'about', `Created achievement: ${a.title}`, a.id);
+
+    addAuditLog(
+      'ACHIEVEMENT_CREATE',
+      'about',
+      `Created achievement: ${a.title}`,
+      a.id,
+    );
   };
 
-  // Contact Actions
-  const addContactSubmission = (sub: Omit<ContactSubmission, 'id' | 'submission_code' | 'created_at' | 'status'>) => {
-    const code = `CON-2026-${String(contactSubmissions.length + 1).padStart(3, '0')}`;
+  const addContactSubmission = (
+    sub: Omit<
+      ContactSubmission,
+      'id' | 'submission_code' | 'created_at' | 'status'
+    >,
+  ) => {
+    const code = `CON-2026-${String(
+      contactSubmissions.length + 1,
+    ).padStart(3, '0')}`;
+
     const newSubmission: ContactSubmission = {
       ...sub,
       id: `con-${Date.now()}`,
@@ -660,29 +1114,62 @@ const deleteEvent = async (id: string) => {
       status: 'new',
       created_at: new Date().toLocaleString(),
     };
-    setContactSubmissions((prev) => [newSubmission, ...prev]);
-    addAuditLog('CONTACT_SUBMIT', 'contact', `New public contact request submitted by ${sub.name}: "${sub.subject}"`, newSubmission.id);
+
+    setContactSubmissions((prev) => [
+      newSubmission,
+      ...prev,
+    ]);
+
+    addAuditLog(
+      'CONTACT_SUBMIT',
+      'contact',
+      `New public contact request submitted by ${sub.name}: "${sub.subject}"`,
+      newSubmission.id,
+    );
   };
 
-  const updateContactStatus = (id: string, status: ContactSubmission['status'], assignedTo?: string, notes?: string) => {
+  const updateContactStatus = (
+    id: string,
+    status: ContactSubmission['status'],
+    assignedTo?: string,
+    notes?: string,
+  ) => {
     setContactSubmissions((prev) =>
       prev.map((c) =>
         c.id === id
           ? {
               ...c,
               status,
-              assigned_to_name: assignedTo || c.assigned_to_name,
-              admin_notes: notes !== undefined ? notes : c.admin_notes,
-              resolved_at: status === 'resolved' || status === 'closed' ? new Date().toLocaleString() : c.resolved_at,
+              assigned_to_name:
+                assignedTo || c.assigned_to_name,
+              admin_notes:
+                notes !== undefined
+                  ? notes
+                  : c.admin_notes,
+              resolved_at:
+                status === 'resolved' ||
+                status === 'closed'
+                  ? new Date().toLocaleString()
+                  : c.resolved_at,
             }
-          : c
-      )
+          : c,
+      ),
     );
-    addAuditLog('CONTACT_STATUS_UPDATE', 'contact', `Updated contact #${id} status to ${status}`, id);
+
+    addAuditLog(
+      'CONTACT_STATUS_UPDATE',
+      'contact',
+      `Updated contact #${id} status to ${status}`,
+      id,
+    );
   };
 
-  // Push Notifications
-  const sendNotification = (notif: Omit<NotificationRecord, 'id' | 'sent_at' | 'sender_name' | 'targeted_devices'>) => {
+  const sendNotification = (
+    notif: Omit<
+      NotificationRecord,
+      'id' | 'sent_at' | 'sender_name' | 'targeted_devices'
+    >,
+  ) => {
     const newNotif: NotificationRecord = {
       ...notif,
       id: `notif-${Date.now()}`,
@@ -690,37 +1177,71 @@ const deleteEvent = async (id: string) => {
       sent_at: new Date().toLocaleString(),
       targeted_devices: 2450,
     };
-    setNotifications((prev) => [newNotif, ...prev]);
-    addAuditLog('NOTIFICATION_SENT', 'notifications', `Broadcast push notification to 2,450 devices: "${notif.title}"`, newNotif.id);
+
+    setNotifications((prev) => [
+      newNotif,
+      ...prev,
+    ]);
+
+    addAuditLog(
+      'NOTIFICATION_SENT',
+      'notifications',
+      `Broadcast push notification to 2,450 devices: "${notif.title}"`,
+      newNotif.id,
+    );
   };
 
-  // Rejected Records & Imports
-  const addRejectedRecords = (records: RejectedRecord[]) => {
-    setRejectedRecords((prev) => [...records, ...prev]);
+  const addRejectedRecords = (
+    records: RejectedRecord[],
+  ) => {
+    setRejectedRecords((prev) => [
+      ...records,
+      ...prev,
+    ]);
   };
 
   const resolveRejectedRecord = (id: string) => {
-    setRejectedRecords((prev) => prev.map((r) => (r.id === id ? { ...r, status: 'resolved' } : r)));
-    addAuditLog('REJECTION_RESOLVED', 'imports', `Marked rejected record #${id} as resolved.`, id);
+    setRejectedRecords((prev) =>
+      prev.map((r) =>
+        r.id === id
+          ? { ...r, status: 'resolved' }
+          : r,
+      ),
+    );
+
+    addAuditLog(
+      'REJECTION_RESOLVED',
+      'imports',
+      `Marked rejected record #${id} as resolved.`,
+      id,
+    );
   };
 
   const addImportBatch = (batch: ImportBatch) => {
-    setImportBatches((prev) => [batch, ...prev]);
+    setImportBatches((prev) => [
+      batch,
+      ...prev,
+    ]);
   };
 
-  // Reset to default seed
   const resetAllDataToDefault = () => {
     setSettings(INITIAL_SETTINGS);
     setSocialLinks(INITIAL_SOCIAL_LINKS);
     setStatistics(INITIAL_STATISTICS);
     setMembers(INITIAL_MEMBERS);
-    setSocialWorkCategories(INITIAL_SOCIAL_WORK_CATEGORIES);
-    setSocialWorkActivities(INITIAL_SOCIAL_WORK_ACTIVITIES);
+    setSocialWorkCategories(
+      INITIAL_SOCIAL_WORK_CATEGORIES,
+    );
+    setSocialWorkActivities(
+      INITIAL_SOCIAL_WORK_ACTIVITIES,
+    );
     setEvents(INITIAL_EVENTS);
     setAnnouncements(INITIAL_ANNOUNCEMENTS);
     setMilestones(INITIAL_MILESTONES);
     setAchievements(INITIAL_ACHIEVEMENTS);
-    setContactSubmissions(INITIAL_CONTACT_SUBMISSIONS);
+    setContactSubmissions(
+      INITIAL_CONTACT_SUBMISSIONS,
+    );
     setNotifications([]);
     setAuditLogs(INITIAL_AUDIT_LOGS);
     setRejectedRecords([]);
@@ -828,6 +1349,12 @@ const deleteEvent = async (id: string) => {
 
 export const useApp = () => {
   const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within an AppProvider');
+
+  if (!context) {
+    throw new Error(
+      'useApp must be used within an AppProvider',
+    );
+  }
+
   return context;
 };

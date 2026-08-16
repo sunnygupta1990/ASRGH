@@ -1,5 +1,6 @@
 import { Member } from '../types';
 import { apiRequest } from './client';
+import { getCustomField } from './customFields';
 
 interface BackendMember {
   id: string;
@@ -31,10 +32,6 @@ interface MemberResponse {
   data: BackendMember;
 }
 
-function custom<T>(member: BackendMember, key: string, fallback: T): T {
-  const value = member.customFields?.[key];
-  return (value === undefined || value === null ? fallback : value) as T;
-}
 
 export function mapBackendMember(member: BackendMember): Member {
   return {
@@ -45,22 +42,22 @@ export function mapBackendMember(member: BackendMember): Member {
     display_name:
       member.displayName ??
       `${member.firstName} ${member.lastName ?? ''}`.trim(),
-    category: custom(member, 'category', 'General'),
-    designation: custom(member, 'designation', 'Community Member'),
-    photo_url: custom<string | undefined>(member, 'photo_url', undefined),
+    category: getCustomField(member, 'category', 'General'),
+    designation: getCustomField(member, 'designation', 'Community Member'),
+    photo_url: getCustomField<string | undefined>(member, 'photo_url', undefined),
     phone: member.phone ?? '',
     email: member.email ?? '',
     address: member.addressLine1 ?? '',
     city: member.city ?? '',
     state: member.state ?? '',
-    current_management: custom(member, 'current_management', false),
-    management_post: custom<string | undefined>(
+    current_management: getCustomField(member, 'current_management', false),
+    management_post: getCustomField<string | undefined>(
       member,
       'management_post',
       undefined,
     ),
-    display_order: custom(member, 'display_order', 0),
-    visibility: custom(member, 'visibility', {
+    display_order: getCustomField(member, 'display_order', 0),
+    visibility: getCustomField(member, 'visibility', {
       phone_public: false,
       email_public: false,
       address_public: false,
@@ -74,7 +71,7 @@ export function mapBackendMember(member: BackendMember): Member {
           ? 'deleted'
           : 'active',
     joined_date: member.joinedOn?.slice(0, 10),
-    bio: custom<string | undefined>(member, 'bio', member.notes ?? undefined),
+    bio: getCustomField<string | undefined>(member, 'bio', member.notes ?? undefined),
   };
 }
 

@@ -3,6 +3,7 @@
 import { Event } from '../types';
 import { apiRequest } from './client';
 import { API_BASE_URL } from './config';
+import { getCustomField } from './customFields';
 
 interface BackendEventPhoto {
   id: string;
@@ -51,14 +52,6 @@ interface EventResponse {
   data: BackendEvent;
 }
 
-function custom<T>(
-  event: BackendEvent,
-  key: string,
-  fallback: T,
-): T {
-  const value = event.customFields?.[key];
-  return (value === undefined || value === null ? fallback : value) as T;
-}
 
 export function mapBackendEvent(event: BackendEvent): Event {
   const start = event.startAt ? new Date(event.startAt) : null;
@@ -66,15 +59,15 @@ export function mapBackendEvent(event: BackendEvent): Event {
 
   return {
     id: event.id,
-    event_code: custom(event, 'event_code', event.slug),
+    event_code: getCustomField(event, 'event_code', event.slug),
     title: event.title,
     description: event.description ?? '',
-    social_work_activity_id: custom<string | undefined>(
+    social_work_activity_id: getCustomField<string | undefined>(
       event,
       'social_work_activity_id',
       undefined,
     ),
-    social_work_activity_title: custom<string | undefined>(
+    social_work_activity_title: getCustomField<string | undefined>(
       event,
       'social_work_activity_title',
       undefined,
@@ -90,8 +83,8 @@ export function mapBackendEvent(event: BackendEvent): Event {
       ? end.toISOString().slice(11, 16)
       : undefined,
     location: event.venue ?? '',
-    address: custom<string | undefined>(event, 'address', undefined),
-    google_maps_url: custom<string | undefined>(
+    address: getCustomField<string | undefined>(event, 'address', undefined),
+    google_maps_url: getCustomField<string | undefined>(
       event,
       'google_maps_url',
       undefined,
@@ -104,8 +97,8 @@ export function mapBackendEvent(event: BackendEvent): Event {
           : event.status === 'ongoing'
             ? 'ongoing'
             : 'upcoming',
-    featured: custom(event, 'featured', false),
-    countdown_enabled: custom(event, 'countdown_enabled', false),
+    featured: getCustomField(event, 'featured', false),
+    countdown_enabled: getCustomField(event, 'countdown_enabled', false),
     display_status:
       event.status === 'archived'
         ? 'archived'
@@ -238,29 +231,19 @@ export async function uploadAdminEventPhotos(
   albumId: string,
   files: File[],
 ): Promise<void> {
-  const token = localStorage.getItem('asrgh_admin_token');
-
   const formData = new FormData();
 
   files.forEach((file) => {
     formData.append('photos', file);
   });
 
-  const response = await fetch(
-    `${API_BASE_URL}/api/albums/${albumId}/photos`,
+  await apiRequest<void>(
+    `/api/albums/${albumId}/photos`,
     {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
       body: formData,
     },
   );
-
-  if (!response.ok) {
-    const data = await response.json();
-    throw new Error(data.message ?? 'Unable to upload photos');
-  }
 }
 
 export async function updateAdminEventPhotoCaption(

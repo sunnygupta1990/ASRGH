@@ -1,3 +1,5 @@
+// src/api/client.ts
+
 import { API_BASE_URL } from './config';
 
 export class ApiError extends Error {
@@ -17,15 +19,22 @@ export async function apiRequest<T>(
   const token = localStorage.getItem('asrgh_admin_token');
 
   const headers = new Headers(options.headers ?? {});
-  if (!headers.has('Content-Type') && options.body) {
+
+  if (
+    !headers.has('Content-Type') &&
+    options.body &&
+    !(options.body instanceof FormData)
+  ) {
     headers.set('Content-Type', 'application/json');
   }
+
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
+    cache: 'no-store',
     headers,
   });
 
@@ -39,6 +48,7 @@ export async function apiRequest<T>(
       typeof data === 'object' && data && 'message' in data
         ? String(data.message)
         : 'API request failed';
+
     throw new ApiError(message, response.status);
   }
 
