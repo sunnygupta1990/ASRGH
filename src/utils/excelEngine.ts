@@ -26,48 +26,51 @@ export const TEMPLATE_SPECS = {
     columns: [
       'Member Code',
       'First Name',
+      'Middle Name',
       'Last Name',
       'Display Name',
+      'Gender',
+      'Date of Birth',
       'Member Category',
       'Designation',
-      'Current Management',
-      'Management Post',
       'Phone',
       'Email',
+      'Address Line 1',
+      'Address Line 2',
       'City',
       'State',
-      'Status'
+      'Postal Code',
+      'Country',
+      'Status',
+      'Joined Date',
+      'Notes',
+      'Metadata JSON',
+      'Custom Fields JSON'
     ],
     sampleRows: [
       {
         'Member Code': 'MEM-0009',
         'First Name': 'Deepak',
+        'Middle Name': '',
         'Last Name': 'Garg',
         'Display Name': 'Shri Deepak Garg',
-        'Member Category': 'Life Member',
-        'Designation': 'Executive Member',
-        'Current Management': 'No',
-        'Management Post': '',
-        'Phone': '+91 98111 99887',
-        'Email': 'deepak.garg@gmail.com',
-        'City': 'New Delhi',
-        'State': 'Delhi',
-        'Status': 'Active'
-      },
-      {
-        'Member Code': 'MEM-0010',
-        'First Name': 'Meenakshi',
-        'Last Name': 'Bansal',
-        'Display Name': 'Smt. Meenakshi Bansal',
+        'Gender': 'Male',
+        'Date of Birth': '1985-04-20',
         'Member Category': 'General',
-        'Designation': 'Social Worker',
-        'Current Management': 'No',
-        'Management Post': '',
-        'Phone': '+91 98222 11223',
-        'Email': 'meenakshi@gmail.com',
+        'Designation': 'Community Member',
+        'Phone': '+91 98111 99887',
+        'Email': 'deepak.garg@example.com',
+        'Address Line 1': 'Community Housing',
+        'Address Line 2': 'Sector 14',
         'City': 'New Delhi',
         'State': 'Delhi',
-        'Status': 'Active'
+        'Postal Code': '110085',
+        'Country': 'India',
+        'Status': 'Active',
+        'Joined Date': '2026-01-15',
+        'Notes': '',
+        'Metadata JSON': '{}',
+        'Custom Fields JSON': '{}'
       }
     ]
   },
@@ -77,6 +80,7 @@ export const TEMPLATE_SPECS = {
     columns: [
       'Event Code',
       'Event Title',
+      'Summary',
       'Description',
       'Event Date',
       'Start Time',
@@ -90,6 +94,7 @@ export const TEMPLATE_SPECS = {
       'Featured',
       'Countdown Enabled',
       'Display Status'
+      ,'Published Date','Metadata JSON','Custom Fields JSON'
     ],
     sampleRows: [
       {
@@ -118,6 +123,7 @@ export const TEMPLATE_SPECS = {
       'Activity Code',
       'Social Work Category',
       'Title',
+      'Summary',
       'Description',
       'Activity Type',
       'Start Date',
@@ -127,6 +133,7 @@ export const TEMPLATE_SPECS = {
       'Featured',
       'Display Order',
       'Status'
+      ,'Published Date','Metadata JSON','Custom Fields JSON'
     ],
     sampleRows: [
       {
@@ -151,12 +158,14 @@ export const TEMPLATE_SPECS = {
     columns: [
       'Announcement Code',
       'Title',
+      'Summary',
       'Content',
       'Important',
       'Featured',
       'Publish Date',
       'Expiry Date',
       'Status'
+      ,'Metadata JSON','Custom Fields JSON'
     ],
     sampleRows: [
       {
@@ -260,17 +269,71 @@ export async function parseExcelFile(input: ArrayBuffer | File): Promise<Record<
   } else {
     buffer = input;
   }
-  const wb = XLSX.read(buffer, { type: 'array' });
+
+  const wb = XLSX.read(buffer, {
+    type: 'array',
+    cellDates: true,
+  });
   const firstSheetName = wb.SheetNames[0];
   const ws = wb.Sheets[firstSheetName];
-  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
-  
-  return rows.map((r) => {
-    const stringified: Record<string, string> = {};
-    for (const [k, v] of Object.entries(r)) {
-      stringified[k.trim()] = String(v).trim();
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+    defval: '',
+    raw: true,
+  });
+
+  const dateColumns = new Set([
+    'Date of Birth',
+    'Joined Date',
+    'Joined On',
+    'Event Date',
+    'Start Date',
+    'End Date',
+    'Publish Date',
+    'Expiry Date',
+    'Published Date',
+  ]);
+  const date1904 = wb.Workbook?.WBProps?.date1904 === true;
+
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  const excelDateToIso = (serial: number): string | null => {
+    const parsed = XLSX.SSF.parse_date_code(serial, { date1904 });
+    if (!parsed || !parsed.y || !parsed.m || !parsed.d) return null;
+    return `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)}`;
+  };
+
+  const normalizeDate = (value: unknown): string => {
+    if (value === null || value === undefined || value === '') return '';
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
     }
-    return stringified;
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return excelDateToIso(value) ?? String(value).trim();
+    }
+
+    const text = String(value).trim();
+    if (!text) return '';
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      return text;
+    }
+
+    return text;
+  };
+
+  return rows.map((row) => {
+    const normalized: Record<string, string> = {};
+
+    for (const [rawKey, rawValue] of Object.entries(row)) {
+      const key = rawKey.trim();
+      normalized[key] = dateColumns.has(key)
+        ? normalizeDate(rawValue)
+        : String(rawValue ?? '').trim();
+    }
+
+    return normalized;
   });
 }
 
@@ -685,4 +748,3 @@ export function validateImportData(
     invalidRows,
   };
 }
-

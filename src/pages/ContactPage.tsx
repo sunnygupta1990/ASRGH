@@ -39,7 +39,7 @@ export const ContactPage: React.FC = () => {
     'Grievance & Suggestion',
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.phone.trim() || !formData.message.trim()) {
       setErrorMsg('Please fill in your name, contact phone number, and message.');
@@ -47,10 +47,13 @@ export const ContactPage: React.FC = () => {
     }
 
     setErrorMsg('');
-    const genCode = `CON-2026-${Math.floor(100 + Math.random() * 900)}`;
-    addContactSubmission(formData);
-    setSubmittedCode(genCode);
-    setIsSubmitted(true);
+    try {
+      const id = await addContactSubmission(formData);
+      setSubmittedCode(id);
+      setIsSubmitted(true);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Unable to submit your request. Please try again.');
+    }
   };
 
   return (

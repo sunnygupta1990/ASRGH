@@ -28,18 +28,25 @@ export const AdminSettings: React.FC = () => {
     updateStatistic,
     employees,
     roles,
-    resetAllDataToDefault,
+    updateAdminUser,
+    hasPermission,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'general' | 'stats' | 'social' | 'rbac' | 'system'>('general');
   const [formData, setFormData] = useState<OrganizationSettings>({ ...settings });
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSaveGeneral = (e: React.FormEvent) => {
+  const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings(formData);
-    setSuccessMsg('Organization settings updated successfully!');
-    setTimeout(() => setSuccessMsg(''), 4000);
+    setErrorMsg('');
+    try {
+      await updateSettings(formData);
+      setSuccessMsg('Organization settings updated successfully!');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Unable to save organization settings.');
+    }
   };
 
   return (
@@ -106,6 +113,7 @@ export const AdminSettings: React.FC = () => {
           <span>{successMsg}</span>
         </div>
       )}
+      {errorMsg && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold">{errorMsg}</div>}
 
       {/* Tab 1: General & Contact Settings */}
       {activeTab === 'general' && (
@@ -285,7 +293,7 @@ export const AdminSettings: React.FC = () => {
                     <input
                       type="number"
                       value={st.value}
-                      onChange={(e) => updateStatistic(st.id, Number(e.target.value), true)}
+                      onChange={async (e) => { try { await updateStatistic(st.id, Number(e.target.value), true); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Unable to save statistic.'); } }}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-900"
                     />
                   </div>
@@ -294,7 +302,7 @@ export const AdminSettings: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={st.is_overridden}
-                        onChange={(e) => updateStatistic(st.id, st.value, e.target.checked)}
+                        onChange={async (e) => { try { await updateStatistic(st.id, st.value, e.target.checked); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Unable to save statistic.'); } }}
                         className="w-4 h-4 rounded text-blue-900"
                       />
                       <span className="font-medium text-slate-700">Manual Override</span>
@@ -324,10 +332,9 @@ export const AdminSettings: React.FC = () => {
                 <input
                   type="text"
                   value={link.url}
-                  onChange={(e) => {
-                    const updated = [...socialLinks];
-                    updated[idx].url = e.target.value;
-                    updateSocialLinks(updated);
+                  onChange={async (e) => {
+                    const updated = socialLinks.map((item, itemIndex) => itemIndex === idx ? { ...item, url: e.target.value } : item);
+                    try { await updateSocialLinks(updated); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Unable to save social link.'); }
                   }}
                   className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800"
                 />
@@ -335,10 +342,9 @@ export const AdminSettings: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={link.is_enabled}
-                    onChange={(e) => {
-                      const updated = [...socialLinks];
-                      updated[idx].is_enabled = e.target.checked;
-                      updateSocialLinks(updated);
+                    onChange={async (e) => {
+                      const updated = socialLinks.map((item, itemIndex) => itemIndex === idx ? { ...item, is_enabled: e.target.checked } : item);
+                      try { await updateSocialLinks(updated); } catch (error) { setErrorMsg(error instanceof Error ? error.message : 'Unable to save social link.'); }
                     }}
                     className="w-4 h-4 rounded text-blue-900"
                   />
@@ -373,43 +379,34 @@ export const AdminSettings: React.FC = () => {
                   <div>Designation: {emp.designation}</div>
                   <div>Email: {emp.email} | Phone: {emp.phone}</div>
                 </div>
+                {hasPermission('admin_users.write') && hasPermission('roles.manage') && (
+                  <div className="grid grid-cols-2 gap-2 pt-2">
+                    <select value={emp.status} onChange={async (event) => { try { await updateAdminUser(emp.id, { status: event.target.value }); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to update admin status.'); } }} className="px-2 py-1.5 border border-slate-200 rounded-lg">
+                      <option value="active">Active</option>
+                      <option value="suspended">Suspended</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                    <select value={emp.role_ids?.[0] ?? ''} onChange={async (event) => { try { await updateAdminUser(emp.id, { roleIds: [event.target.value] }); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to update admin role.'); } }} className="px-2 py-1.5 border border-slate-200 rounded-lg">
+                      {roles.map((role) => <option key={role.id} value={role.id}>{role.role_name}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Tab 5: System Maintenance & Reset Demo */}
+      {/* Tab 5: System information */}
       {activeTab === 'system' && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-6 text-xs">
           <div>
-            <h3 className="font-bold text-slate-900 text-base">System Maintenance & Demo Controls</h3>
+            <h3 className="font-bold text-slate-900 text-base">System Maintenance</h3>
             <p className="text-slate-500 mt-0.5">
-              Reset the entire application state back to pristine demo data, or clear local storage caches.
+              Administrative records are stored authoritatively by the backend. Destructive database maintenance is intentionally unavailable in the browser.
             </p>
           </div>
 
-          <div className="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-3">
-            <h4 className="font-bold text-rose-900 text-sm flex items-center gap-2">
-              <RotateCcw className="w-4 h-4 text-rose-700" />
-              <span>Reset All Community Data to Default</span>
-            </h4>
-            <p className="text-rose-800 text-xs">
-              This action restores all initial members, upcoming events, social work programs, circulars, and settings to their pre-configured demo state. Any custom additions will be reverted.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Are you sure you want to reset all data back to the default factory state?')) {
-                  resetAllDataToDefault();
-                  alert('All community records have been reset to factory defaults.');
-                }
-              }}
-              className="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-colors cursor-pointer"
-            >
-              Reset to Factory Demo Data
-            </button>
-          </div>
         </div>
       )}
     </div>

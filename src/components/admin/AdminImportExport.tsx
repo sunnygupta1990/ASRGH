@@ -21,28 +21,26 @@ import {
   validateImportData,
   ModuleValidationConfig,
 } from '../../utils/excelEngine';
-import { ImportBatch, RejectedRecord, Member, Event, SocialWorkActivity, Announcement } from '../../types';
+import { RejectedRecord } from '../../types';
+import { exportAdminDataApi } from '../../api/adminPortal';
 
 export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
   const {
     members,
-    bulkAddMembers,
     events,
-    bulkAddEvents,
     socialWorkActivities,
     announcements,
-    bulkAddAnnouncements,
     importBatches,
-    addImportBatch,
     rejectedRecords,
-    addRejectedRecords,
     resolveRejectedRecord,
-    currentUser,
+    commitImport,
   } = useApp();
 
   const [selectedModule, setSelectedModule] = useState<'members' | 'events' | 'social_work' | 'announcements'>('members');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [rawRows, setRawRows] = useState<Record<string, string>[]>([]);
   const [validationResult, setValidationResult] = useState<{
     total: number;
     validRows: any[];
@@ -70,6 +68,7 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
     try {
       // 1. Parse Excel into raw json rows
       const rawRows = await parseExcelFile(file);
+      setRawRows(rawRows);
       const batchId = `BATCH-${Date.now().toString().slice(-6)}`;
 
       // 2. Validate against system schema and unique constraints
@@ -94,103 +93,51 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
     }
   };
 
-  const handleCommitImport = () => {
+  const handleCommitImport = async () => {
     if (!validationResult || !selectedFile) return;
 
-    const batchId = `BATCH-${Date.now().toString().slice(-6)}`;
-
-    // Commit valid records to appropriate context state
-    if (selectedModule === 'members' && validationResult.validRows.length > 0) {
-      const formattedMembers: Member[] = validationResult.validRows.map((r, idx) => ({
-        id: `mem-${Date.now()}-${idx}`,
-        member_code: r['Member Code'] || `MEM-${String(members.length + idx + 1).padStart(4, '0')}`,
-        first_name: r['First Name'] || r['Full Name']?.split(' ')[0] || 'Member',
-        last_name: r['Last Name'] || r['Full Name']?.split(' ').slice(1).join(' ') || '',
-        display_name: r['Display Name'] || r['Full Name'] || `${r['First Name'] || ''} ${r['Last Name'] || ''}`.trim(),
-        category: r['Category'] || 'General',
-        designation: r['Designation'] || 'Community Member',
-        current_management: String(r['Is Management (YES/NO)']).toUpperCase() === 'YES',
-        management_post: r['Management Post'] || undefined,
-        phone: r['Phone Number'] || '',
-        email: r['Email Address'] || '',
-        city: r['City'] || 'New Delhi',
-        state: r['State'] || 'Delhi',
-        address: r['Address'] || '',
-        display_order: members.length + idx + 1,
-        visibility: {
-          phone_public: String(r['Phone Public (YES/NO)']).toUpperCase() === 'YES',
-          email_public: String(r['Email Public (YES/NO)']).toUpperCase() === 'YES',
-          address_public: false,
-          photo_public: true,
-          designation_public: true,
-        },
-        status: 'active',
-        joined_date: new Date().toISOString().split('T')[0],
-      }));
-      bulkAddMembers(formattedMembers);
-    } else if (selectedModule === 'events' && validationResult.validRows.length > 0) {
-      const formattedEvents: Event[] = validationResult.validRows.map((r, idx) => ({
-        id: `evt-${Date.now()}-${idx}`,
-        event_code: r['Event Code'] || `EVT-2026-${String(events.length + idx + 1).padStart(4, '0')}`,
-        title: r['Event Title'] || 'Community Function',
-        description: r['Description'] || '',
-        category: r['Category'] || 'Cultural',
-        event_date: r['Event Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
-        start_time: r['Start Time (HH:MM)'] || '10:00',
-        end_time: r['End Time (HH:MM)'] || '17:00',
-        location: r['Location / Venue'] || 'Main Auditorium',
-        address: r['Address'] || '',
-        status: 'upcoming',
-        featured: true,
-        countdown_enabled: true,
-        display_status: 'active',
-        photos: [],
-      }));
-      bulkAddEvents(formattedEvents);
-    } else if (selectedModule === 'announcements' && validationResult.validRows.length > 0) {
-      const formattedAnns: Announcement[] = validationResult.validRows.map((r, idx) => ({
-        id: `ann-${Date.now()}-${idx}`,
-        announcement_code: r['Notice Code'] || `ANN-2026-${String(announcements.length + idx + 1).padStart(3, '0')}`,
-        title: r['Title'] || 'Community Notice',
-        content: r['Content / Notice Body'] || '',
-        important: String(r['Is Flash Top Banner (YES/NO)']).toUpperCase() === 'YES',
-        featured: true,
-        publish_date: r['Publish Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
-        status: 'published',
-      }));
-      bulkAddAnnouncements(formattedAnns);
+    setIsProcessing(true);
+    try {
+      const result = await commitImport(selectedModule, selectedFile.name, rawRows);
+      alert(`Import committed: ${result.accepted} accepted, ${result.rejected} rejected.`);
+      setSelectedFile(null);
+      setRawRows([]);
+      setValidationResult(null);
+      return;
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to commit import.');
+      return;
+    } finally {
+      setIsProcessing(false);
     }
 
-    // Save Rejected Rows if any
-    if (validationResult.invalidRows.length > 0) {
-      addRejectedRecords(validationResult.invalidRows);
-    }
-
-    // Record Batch Summary
-    const batchRecord: ImportBatch = {
-      id: batchId,
-      batch_code: batchId,
-      module_name: selectedModule,
-      file_name: selectedFile.name,
-      total_rows: validationResult.total,
-      passed_rows: validationResult.validRows.length,
-      failed_rows: validationResult.invalidRows.length,
-      warning_rows: 0,
-      uploaded_by: currentUser.full_name,
-      uploaded_at: new Date().toLocaleString(),
-      status: validationResult.invalidRows.length === 0 ? 'completed' : 'partially_accepted',
-    };
-    addImportBatch(batchRecord);
-
-    alert(`Successfully committed ${validationResult.validRows.length} records to the system!`);
-    setSelectedFile(null);
-    setValidationResult(null);
   };
 
   const filteredRejections = rejectedRecords.filter((r) => {
     if (filterRejectionModule !== 'all' && r.module !== filterRejectionModule) return false;
     return true;
   });
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const exported = await exportAdminDataApi(selectedModule);
+      const bytes = Uint8Array.from(atob(exported.contentBase64), (char) => char.charCodeAt(0));
+      const blob = new Blob([bytes], { type: exported.mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = exported.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to export data.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -207,6 +154,14 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={isExporting}
+            className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 disabled:opacity-60 text-blue-900 border border-blue-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+          >
+            {isExporting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            <span>Export authoritative data</span>
+          </button>
           <button
             onClick={() => downloadTemplate(selectedModule)}
             className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
@@ -404,7 +359,7 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
                     <td className="py-3.5 px-4 text-[10px] text-slate-400">{rej.rejected_at}</td>
                     <td className="py-3.5 px-4 text-right">
                       <button
-                        onClick={() => resolveRejectedRecord(rej.id)}
+                        onClick={() => void resolveRejectedRecord(rej.id).catch((error) => alert(error instanceof Error ? error.message : 'Unable to resolve rejected record.'))}
                         className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs transition-colors"
                       >
                         Dismiss

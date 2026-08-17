@@ -17,9 +17,10 @@ import {
 import { useApp } from '../../context/AppContext';
 import { Member } from '../../types';
 import { downloadTemplate } from '../../utils/excelEngine';
+import { createManagementAssignmentApi, createManagementPositionApi, createManagementTermApi, deleteManagementAssignmentApi, deleteManagementPositionApi, deleteManagementTermApi, fetchManagementApi, updateManagementAssignmentApi, updateManagementPositionApi, updateManagementTermApi } from '../../api/adminPortal';
 
 export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
-  const { members, addMember, updateMember, deleteMember, archiveMember } = useApp();
+  const { members, addMember, updateMember, deleteMember, archiveMember, refreshMembersFromApi } = useApp();
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -27,10 +28,21 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
 
   const [isEditing, setIsEditing] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [management, setManagement] = useState<{ positions: Array<{ id: string; code: string; name: string; isActive: boolean }>; terms: Array<{ id: string; name: string; startDate: string; endDate?: string; status: string }>; assignments: Array<{ id: string; memberId: string; positionId: string; termId: string }> }>({ positions: [], terms: [], assignments: [] });
+  const [assignmentId, setAssignmentId] = useState('');
+  const [positionId, setPositionId] = useState('');
+  const [termId, setTermId] = useState('');
+  const [assignManagement, setAssignManagement] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [newPosition, setNewPosition] = useState({ code: '', name: '' });
+  const [newTerm, setNewTerm] = useState({ name: '', startDate: '', endDate: '' });
+  const reloadManagement = async () => { const data = await fetchManagementApi(); setManagement(data as typeof management); };
+  React.useEffect(() => { void reloadManagement(); }, []);
 
   const [formData, setFormData] = useState<Partial<Member>>({
     member_code: '',
     first_name: '',
+    middle_name: '',
     last_name: '',
     display_name: '',
     category: 'Life Member',
@@ -40,6 +52,11 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
     phone: '',
     email: '',
     address: '',
+    address_line_2: '',
+    postal_code: '',
+    country: 'India',
+    gender: '',
+    date_of_birth: '',
     city: 'New Delhi',
     state: 'Delhi',
     bio: '',
@@ -76,6 +93,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
     setFormData({
       member_code: nextCode,
       first_name: '',
+      middle_name: '',
       last_name: '',
       display_name: '',
       category: 'Life Member',
@@ -86,6 +104,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
       email: '',
       city: 'New Delhi',
       state: 'Delhi',
+      country: 'India',
       display_order: members.length + 1,
       visibility: {
         phone_public: false,
@@ -99,31 +118,47 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
       photo_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=600',
     });
     setSelectedMember(null);
+    setAssignmentId('');
+    setPositionId('');
+    setTermId('');
+    setAssignManagement(false);
     setIsEditing(true);
   };
 
   const handleOpenEdit = (m: Member) => {
     setSelectedMember(m);
     setFormData({ ...m });
+    const assignment = m.management_assignments?.[0];
+    setAssignmentId(assignment?.id ?? '');
+    setPositionId(assignment?.position_id ?? '');
+    setTermId(assignment?.term_id ?? '');
+    setAssignManagement(Boolean(assignment));
     setIsEditing(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.first_name?.trim() || !formData.member_code?.trim()) return;
+
+    if (isSaving || !formData.first_name?.trim() || !formData.member_code?.trim()) {
+      return;
+    }
 
     const displayName =
       formData.display_name?.trim() ||
       `${formData.first_name || ''} ${formData.last_name || ''}`.trim();
 
+    setIsSaving(true);
+
     try {
+      let savedMemberId: string;
       if (selectedMember) {
         await updateMember(selectedMember.id, {
           ...formData,
           display_name: displayName,
         });
+        savedMemberId = selectedMember.id;
       } else {
-        await addMember({
+        const saved = await addMember({
           ...formData,
           id: `mem-${Date.now()}`,
           display_name: displayName,
@@ -137,12 +172,41 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
           },
           status: formData.status || 'active',
         } as Member);
+        savedMemberId = saved.id;
       }
+      if (assignManagement) {
+        if (!positionId || !termId) {
+          throw new Error('Select both a management position and a management term, or turn off management assignment.');
+        }
+
+        if (assignmentId) {
+          await updateManagementAssignmentApi(assignmentId, {
+            memberId: savedMemberId,
+            positionId,
+            termId,
+          });
+        } else {
+          await createManagementAssignmentApi({
+            memberId: savedMemberId,
+            positionId,
+            termId,
+          });
+        }
+      } else if (assignmentId) {
+        await deleteManagementAssignmentApi(assignmentId);
+      }
+      await reloadManagement();
+      await refreshMembersFromApi();
       setIsEditing(false);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Unable to save member');
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  const addPosition = async () => { try { await createManagementPositionApi(newPosition); setNewPosition({ code: '', name: '' }); await reloadManagement(); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to create management position'); } };
+  const addTerm = async () => { try { await createManagementTermApi({ ...newTerm, endDate: newTerm.endDate || null }); setNewTerm({ name: '', startDate: '', endDate: '' }); await reloadManagement(); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to create management term'); } };
 
   const toggleVisibilityField = (m: Member, field: keyof Member['visibility']) => {
     updateMember(m.id, {
@@ -191,6 +255,19 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
             <span>Add Member</span>
           </button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <section className="bg-white p-4 rounded-2xl border border-slate-200 text-xs space-y-3">
+          <h3 className="font-bold text-slate-900">Management Positions</h3>
+          <div className="flex gap-2"><input value={newPosition.code} onChange={(e) => setNewPosition({ ...newPosition, code: e.target.value })} placeholder="Code" className="min-w-0 flex-1 p-2 border rounded-lg" /><input value={newPosition.name} onChange={(e) => setNewPosition({ ...newPosition, name: e.target.value })} placeholder="Position name" className="min-w-0 flex-1 p-2 border rounded-lg" /><button type="button" disabled={!newPosition.code.trim() || !newPosition.name.trim()} onClick={() => void addPosition()} className="px-3 bg-blue-900 text-white rounded-lg disabled:opacity-50">Add</button></div>
+          <div className="space-y-1">{management.positions.map((position) => <div key={position.id} className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg"><span>{position.code} — {position.name}</span><span className="flex gap-1"><button type="button" onClick={async () => { const name = window.prompt('Position name', position.name); if (name?.trim()) { await updateManagementPositionApi(position.id, { name }); await reloadManagement(); } }} className="text-blue-700">Edit</button><button type="button" onClick={async () => { if (confirm(`Delete position ${position.name}?`)) { try { await deleteManagementPositionApi(position.id); await reloadManagement(); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to delete position'); } } }} className="text-red-700">Delete</button></span></div>)}</div>
+        </section>
+        <section className="bg-white p-4 rounded-2xl border border-slate-200 text-xs space-y-3">
+          <h3 className="font-bold text-slate-900">Management Terms</h3>
+          <div className="grid grid-cols-2 gap-2"><input value={newTerm.name} onChange={(e) => setNewTerm({ ...newTerm, name: e.target.value })} placeholder="Term name" className="p-2 border rounded-lg" /><input type="date" value={newTerm.startDate} onChange={(e) => setNewTerm({ ...newTerm, startDate: e.target.value })} className="p-2 border rounded-lg" /><input type="date" value={newTerm.endDate} onChange={(e) => setNewTerm({ ...newTerm, endDate: e.target.value })} className="p-2 border rounded-lg" /><button type="button" disabled={!newTerm.name.trim() || !newTerm.startDate} onClick={() => void addTerm()} className="px-3 bg-blue-900 text-white rounded-lg disabled:opacity-50">Add Term</button></div>
+          <div className="space-y-1">{management.terms.map((term) => <div key={term.id} className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg"><span>{term.name} ({term.startDate.slice(0,10)}{term.endDate ? ` – ${term.endDate.slice(0,10)}` : ''})</span><span className="flex gap-1"><button type="button" onClick={async () => { const name = window.prompt('Term name', term.name); if (name?.trim()) { await updateManagementTermApi(term.id, { name }); await reloadManagement(); } }} className="text-blue-700">Edit</button><button type="button" onClick={async () => { if (confirm(`Delete term ${term.name}?`)) { try { await deleteManagementTermApi(term.id); await reloadManagement(); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to delete term'); } } }} className="text-red-700">Delete</button></span></div>)}</div>
+        </section>
       </div>
 
       {/* Filter Bar */}
@@ -274,7 +351,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                         {m.management_post || 'Officer'}
                       </span>
                     ) : (
-                      <span className="text-slate-400 text-[11px]">â€”</span>
+                      <span className="text-slate-400 text-[11px]">—</span>
                     )}
                   </td>
                   <td className="p-3.5">
@@ -391,6 +468,24 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label className="block font-bold text-slate-700 mb-1">Middle Name</label><input type="text" value={formData.middle_name || ''} onChange={(e) => setFormData({ ...formData, middle_name: e.target.value })} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" /></div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Gender</label>
+                  <select
+                    value={formData.gender || ''}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                  >
+                    <option value="">Select gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                  </select>
+                </div>
+                <div><label className="block font-bold text-slate-700 mb-1">Date of Birth</label><input type="date" value={formData.date_of_birth || ''} onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" /></div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Display Name (Salutation)</label>
@@ -415,6 +510,13 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                     <option value="Youth Wing">Youth Wing</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="block font-bold text-slate-700 mb-1">Address Line 1</label><input type="text" value={formData.address || ''} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" /></div>
+                <div><label className="block font-bold text-slate-700 mb-1">Address Line 2</label><input type="text" value={formData.address_line_2 || ''} onChange={(e) => setFormData({ ...formData, address_line_2: e.target.value })} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" /></div>
+                <div><label className="block font-bold text-slate-700 mb-1">Postal Code</label><input type="text" value={formData.postal_code || ''} onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" /></div>
+                <div><label className="block font-bold text-slate-700 mb-1">Country</label><input type="text" value={formData.country || ''} onChange={(e) => setFormData({ ...formData, country: e.target.value })} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" /></div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -444,42 +546,144 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                 <label className="block font-bold text-slate-700 mb-1">
                   Membership Status
                 </label>
-                <select
-                  value={formData.status || 'active'}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      status: e.target.value as Member['status'],
-                    })
-                  }
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                >
-                  <option value="active">Active</option>
-                  <option value="archived">Archived</option>
-                </select>
+                {selectedMember ? (
+                  <select
+                    value={formData.status || 'active'}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        status: e.target.value as Member['status'],
+                      })
+                    }
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  >
+                    <option value="active">Active</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                ) : (
+                  <div className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl font-semibold text-slate-700">
+                    Active
+                    <span className="ml-2 font-normal text-slate-500">
+                      New members are created as active.
+                    </span>
+                  </div>
+                )}
               </div>
-              {/* Management Post checkbox */}
-              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
+                <div>
+                  <span className="font-bold text-amber-900 block">Management Assignment</span>
+                  <p className="text-[11px] text-amber-800 mt-1">
+                    Optional. Use this only when this member currently holds a management position.
+                  </p>
+                </div>
+
+                <label className="flex items-center gap-2 text-slate-800 font-semibold">
                   <input
                     type="checkbox"
-                    checked={formData.current_management || false}
-                    onChange={(e) => setFormData({ ...formData, current_management: e.target.checked })}
-                    className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
+                    checked={assignManagement}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setAssignManagement(enabled);
+                      if (!enabled) {
+                        setAssignmentId('');
+                        setPositionId('');
+                        setTermId('');
+                      }
+                    }}
+                    className="h-4 w-4"
                   />
-                  <span className="font-bold text-amber-900">Current Management / Executive Member</span>
+                  Assign this member to management
                 </label>
-                {formData.current_management && (
-                  <div>
-                    <label className="block font-bold text-amber-900 mb-1">Management Post / Role Title</label>
-                    <input
-                      type="text"
-                      value={formData.management_post || ''}
-                      onChange={(e) => setFormData({ ...formData, management_post: e.target.value })}
-                      placeholder="e.g. President, General Secretary, Treasurer"
-                      className="w-full p-2 bg-white border border-amber-300 rounded-lg text-xs"
-                    />
-                  </div>
+
+                {assignManagement && (
+                  <>
+                    {selectedMember && selectedMember.management_assignments?.length ? (
+                      <select
+                        value={assignmentId}
+                        onChange={(e) => {
+                          const nextId = e.target.value;
+                          const next = selectedMember.management_assignments?.find(
+                            (assignment) => assignment.id === nextId,
+                          );
+                          setAssignmentId(nextId);
+                          setPositionId(next?.position_id ?? '');
+                          setTermId(next?.term_id ?? '');
+                        }}
+                        className="w-full p-2 bg-white border border-amber-300 rounded-lg"
+                      >
+                        <option value="">Create another assignment</option>
+                        {selectedMember.management_assignments.map((assignment) => (
+                          <option key={assignment.id} value={assignment.id}>
+                            {assignment.position.name} — {assignment.term.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+
+                    {management.positions.filter((position) => position.isActive).length === 0 ||
+                    management.terms.length === 0 ? (
+                      <div className="rounded-lg bg-white border border-amber-200 p-3 text-amber-900">
+                        <p className="font-semibold">Management setup is incomplete.</p>
+                        <p className="mt-1">
+                          Create at least one active position and one management term before assigning this member.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditing(false);
+                            onNavigateTab('management');
+                          }}
+                          className="mt-2 px-3 py-1.5 bg-blue-900 text-white rounded-lg font-semibold"
+                        >
+                          Manage Positions & Terms
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block font-semibold text-amber-900 mb-1">Management Position</label>
+                          <select
+                            value={positionId}
+                            onChange={(e) => setPositionId(e.target.value)}
+                            className="w-full p-2 bg-white border border-amber-300 rounded-lg"
+                            required
+                          >
+                            <option value="">Select position</option>
+                            {management.positions
+                              .filter((position) => position.isActive)
+                              .map((position) => (
+                                <option key={position.id} value={position.id}>
+                                  {position.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block font-semibold text-amber-900 mb-1">Management Term</label>
+                          <select
+                            value={termId}
+                            onChange={(e) => setTermId(e.target.value)}
+                            className="w-full p-2 bg-white border border-amber-300 rounded-lg"
+                            required
+                          >
+                            <option value="">Select term</option>
+                            {management.terms.map((term) => (
+                              <option key={term.id} value={term.id}>
+                                {term.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {!assignManagement && (
+                  <p className="text-[11px] text-slate-600">
+                    Leave this unchecked for an ordinary member. You can assign management later by editing the member.
+                  </p>
                 )}
               </div>
 
@@ -574,6 +778,22 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                     />
                     <span>Show Email Publicly</span>
                   </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.visibility?.address_public || false}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          visibility: {
+                            ...(formData.visibility as any),
+                            address_public: e.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    <span>Show Address Publicly</span>
+                  </label>
                 </div>
               </div>
 
@@ -587,9 +807,10 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs"
+                  disabled={isSaving}
+                  className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Save Member Record
+                  {isSaving ? 'Saving...' : 'Save Member Record'}
                 </button>
               </div>
             </form>

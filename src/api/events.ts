@@ -38,6 +38,8 @@ interface BackendEvent {
   endAt?: string | null;
   status: string;
   coverMediaId?: string | null;
+  publishedAt?: string | null;
+  metadata?: Record<string, unknown> | null;
   customFields?: Record<string, unknown> | null;
   album?: BackendEventAlbum | null;
 }
@@ -61,6 +63,7 @@ export function mapBackendEvent(event: BackendEvent): Event {
     id: event.id,
     event_code: getCustomField(event, 'event_code', event.slug),
     title: event.title,
+    summary: event.summary ?? undefined,
     description: event.description ?? '',
     social_work_activity_id: getCustomField<string | undefined>(
       event,
@@ -103,6 +106,10 @@ export function mapBackendEvent(event: BackendEvent): Event {
       event.status === 'archived'
         ? 'archived'
         : 'active',
+    published_at: event.publishedAt ?? undefined,
+    cover_media_id: event.coverMediaId ?? undefined,
+    metadata: event.metadata ?? {},
+    custom_fields: event.customFields ?? {},
     album_code: event.album?.id,
     album_name: event.album?.title,
     photos:
@@ -170,16 +177,32 @@ function toBackendEvent(event: Partial<Event>) {
     title: event.title,
     slug,
     category: event.category,
+    summary: event.summary,
     description: event.description,
     venue: event.location,
     startAt: localDateTimeToIso(event.event_date, event.start_time),
-    endAt: event.end_time
-      ? localDateTimeToIso(event.event_date, event.end_time)
-      : undefined,
+    endAt: event.end_time === undefined
+      ? undefined
+      : event.end_time
+        ? localDateTimeToIso(event.event_date, event.end_time)
+        : null,
     status:
       event.display_status === 'archived'
         ? 'archived'
         : event.status ?? 'upcoming',
+    publishedAt: event.published_at ? new Date(event.published_at).toISOString() : null,
+    coverMediaId: event.cover_media_id || null,
+    metadata: event.metadata,
+    customFields: {
+      ...(event.custom_fields ?? {}),
+      event_code: event.event_code,
+      social_work_activity_id: event.social_work_activity_id,
+      social_work_activity_title: event.social_work_activity_title,
+      address: event.address,
+      google_maps_url: event.google_maps_url,
+      featured: event.featured,
+      countdown_enabled: event.countdown_enabled,
+    },
   };
 }
 
@@ -232,23 +255,29 @@ export async function archiveAdminEvent(
   return mapBackendEvent(response.data);
 }
 
+export async function deleteAdminEvent(id: string): Promise<void> {
+  await apiRequest(`/api/events/${id}`, { method: 'DELETE' });
+}
+
 export async function uploadAdminEventPhotos(
   albumId: string,
   files: File[],
-): Promise<void> {
+): Promise<Array<{ id: string }>> {
   const formData = new FormData();
 
   files.forEach((file) => {
     formData.append('photos', file);
   });
 
-  await apiRequest<void>(
+  const response = await apiRequest<{ success: true; data: Array<{ id: string }> }>(
     `/api/albums/${albumId}/photos`,
     {
       method: 'POST',
       body: formData,
     },
   );
+
+  return response.data;
 }
 
 export async function updateAdminEventPhotoCaption(
@@ -287,4 +316,8 @@ export async function deleteAdminEventPhoto(
       method: 'DELETE',
     },
   );
+}
+
+export async function reorderAdminEventPhotos(albumId: string, photoIds: string[]): Promise<void> {
+  await apiRequest(`/api/albums/${albumId}/photos/order`, { method: 'PUT', body: JSON.stringify({ photoIds }) });
 }

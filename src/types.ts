@@ -28,16 +28,22 @@ export interface Member {
   id: string;
   member_code: string; // e.g. MEM-0001
   first_name: string;
+  middle_name?: string;
   last_name: string;
   display_name: string;
+  gender?: string;
+  date_of_birth?: string;
   category: string; // e.g. 'General', 'Patron', 'Life Member', 'Youth Wing'
   designation: string;
   photo_url?: string;
   phone?: string;
   email?: string;
   address?: string;
+  address_line_2?: string;
   city?: string;
   state?: string;
+  postal_code?: string;
+  country?: string;
   current_management: boolean;
   management_post?: string; // e.g. 'President', 'General Secretary', 'Treasurer', 'Vice President'
   display_order: number;
@@ -45,7 +51,20 @@ export interface Member {
   status: RecordStatus;
   joined_date?: string;
   bio?: string;
+  notes?: string;
+  native_place?: string;
+  joining_date?: string;
+  show_phone?: boolean;
+  show_email?: boolean;
+  profile_media_id?: string;
+  metadata?: Record<string, unknown>;
+  custom_fields?: Record<string, unknown>;
+  management_assignments?: ManagementAssignment[];
 }
+
+export interface ManagementPosition { id: string; code: string; name: string; display_order: number; description?: string; is_active: boolean; custom_fields: Record<string, unknown>; }
+export interface ManagementTerm { id: string; name: string; start_date: string; end_date?: string; status: string; notes?: string; custom_fields: Record<string, unknown>; }
+export interface ManagementAssignment { id: string; member_id: string; position_id: string; term_id: string; start_date?: string; end_date?: string; display_order: number; notes?: string; custom_fields: Record<string, unknown>; position: ManagementPosition; term: ManagementTerm; }
 
 export interface SocialWorkCategory {
   id: string;
@@ -62,6 +81,7 @@ export interface SocialWorkActivity {
   category_id: string;
   category_name: string;
   title: string;
+  summary?: string;
   description: string;
   type: SocialWorkType;
   start_date?: string;
@@ -72,6 +92,10 @@ export interface SocialWorkActivity {
   display_order: number;
   photos: string[];
   beneficiaries_count?: number;
+  published_at?: string;
+  cover_media_id?: string;
+  metadata?: Record<string, unknown>;
+  custom_fields?: Record<string, unknown>;
 }
 
 export interface EventPhoto {
@@ -81,12 +105,14 @@ export interface EventPhoto {
   caption?: string;
   display_order: number;
   uploaded_at: string;
+  is_featured?: boolean;
 }
 
 export interface Event {
   id: string;
   event_code: string; // e.g. EVT-2026-0001
   title: string;
+  summary?: string;
   description: string;
   social_work_activity_id?: string;
   social_work_activity_title?: string;
@@ -101,6 +127,10 @@ export interface Event {
   featured: boolean;
   countdown_enabled: boolean;
   display_status: RecordStatus;
+  published_at?: string;
+  cover_media_id?: string;
+  metadata?: Record<string, unknown>;
+  custom_fields?: Record<string, unknown>;
   album_code?: string;
   album_name?: string;
   photos: EventPhoto[];
@@ -110,12 +140,16 @@ export interface Announcement {
   id: string;
   announcement_code: string; // e.g. ANN-2026-001
   title: string;
+  summary?: string;
   content: string;
   important: boolean;
   featured: boolean;
   publish_date: string;
   expiry_date?: string;
   status: AnnouncementStatus;
+  cover_media_id?: string;
+  metadata?: Record<string, unknown>;
+  custom_fields?: Record<string, unknown>;
 }
 
 export interface NotificationRecord {
@@ -128,6 +162,7 @@ export interface NotificationRecord {
   sent_at: string;
   targeted_devices: number;
   status: 'sent' | 'failed' | 'scheduled';
+  is_read?: boolean;
 }
 
 export interface ContactSubmission {
@@ -176,6 +211,7 @@ export interface OrganizationSettings {
   legal_name: string;
   primary_email: string;
   primary_phone: string;
+  secondary_phone?: string;
   whatsapp_number: string;
   address_line_1: string;
   address_line_2: string;
@@ -243,6 +279,9 @@ export interface Employee {
   status: EmployeeStatus;
   last_login_at?: string;
   permission_overrides?: Record<string, Partial<UserPermission>>;
+  role_ids?: string[];
+  permission_codes?: string[];
+  is_system_role?: boolean;
 }
 
 export interface AuditLog {

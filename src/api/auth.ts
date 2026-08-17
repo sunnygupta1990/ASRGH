@@ -6,6 +6,11 @@ export interface AuthUser {
   displayName: string;
   status?: string;
   lastLoginAt?: string | null;
+  roleId?: string | null;
+  roleName?: string;
+  roles?: { id: string; name: string; isSystemRole: boolean }[];
+  permissions?: string[];
+  isSystemRole?: boolean;
 }
 
 interface LoginResponse {

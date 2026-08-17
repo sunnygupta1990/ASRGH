@@ -51,15 +51,16 @@ export const AdminContacts: React.FC = () => {
     setAdminNotes(sub.admin_notes || '');
   };
 
-  const handleSaveUpdate = (e: React.FormEvent) => {
+  const handleSaveUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSub) return;
 
-    const assignedEmp = employees.find((emp) => emp.id === assignedEmployeeId);
-    const assignedName = assignedEmp ? assignedEmp.full_name : undefined;
-
-    updateContactStatus(selectedSub.id, resolutionStatus, assignedName, adminNotes);
-    setSelectedSub(null);
+    try {
+      await updateContactStatus(selectedSub.id, resolutionStatus, assignedEmployeeId || undefined, adminNotes);
+      setSelectedSub(null);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to update contact request.');
+    }
   };
 
   return (

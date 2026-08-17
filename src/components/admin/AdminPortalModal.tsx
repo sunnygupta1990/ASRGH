@@ -43,6 +43,7 @@ export const AdminPortalModal: React.FC = () => {
     authLoading,
     logoutAdminUser,
     settings,
+    hasPermission,
   } = useApp();
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -51,18 +52,18 @@ export const AdminPortalModal: React.FC = () => {
   if (!isAuthenticated || authLoading) return <AdminLoginPanel />;
 
   const navItems = [
-    { id: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
-    { id: 'members', label: 'Member Directory', icon: Users },
-    { id: 'events', label: 'Events & Functions', icon: Calendar },
-    { id: 'social_work', label: 'Social Welfare Programs', icon: HeartHandshake },
-    { id: 'announcements', label: 'Circulars & Notices', icon: Bell },
-    { id: 'gallery', label: 'Media & Gallery', icon: ImageIcon },
-    { id: 'contacts', label: 'Inquiries & Helpdesk', icon: Mail },
-    { id: 'notifications', label: 'Broadcast Notifications', icon: Send },
-    { id: 'import', label: 'Excel Import Engine', icon: UploadCloud },
-    { id: 'settings', label: 'Portal & Org Settings', icon: Settings },
-    { id: 'audit', label: 'Security & Audit Logs', icon: ShieldCheck },
-  ];
+    { id: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard, permission: 'dashboard.read' },
+    { id: 'members', label: 'Member Directory', icon: Users, permission: 'members.read' },
+    { id: 'events', label: 'Events & Functions', icon: Calendar, permission: 'events.read' },
+    { id: 'social_work', label: 'Social Welfare Programs', icon: HeartHandshake, permission: 'social_work.read' },
+    { id: 'announcements', label: 'Circulars & Notices', icon: Bell, permission: 'announcements.read' },
+    { id: 'gallery', label: 'Media & Gallery', icon: ImageIcon, permission: 'photos.read' },
+    { id: 'contacts', label: 'Inquiries & Helpdesk', icon: Mail, permission: 'contacts.read' },
+    { id: 'notifications', label: 'Notification Records', icon: Send, permission: 'notifications.read' },
+    { id: 'import', label: 'Excel Import Engine', icon: UploadCloud, permission: 'import_export.manage' },
+    { id: 'settings', label: 'Portal & Org Settings', icon: Settings, permission: 'settings.read' },
+    { id: 'audit', label: 'Security & Audit Logs', icon: ShieldCheck, permission: 'audit.read' },
+  ].filter((item) => hasPermission(item.permission));
 
   const renderActiveTabContent = () => {
     switch (activeAdminTab) {

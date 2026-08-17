@@ -49,6 +49,11 @@ export async function apiRequest<T>(
         ? String(data.message)
         : 'API request failed';
 
+    if (response.status === 401 && token) {
+      localStorage.removeItem('asrgh_admin_token');
+      window.dispatchEvent(new CustomEvent('asrgh:unauthorized'));
+    }
+
     throw new ApiError(message, response.status);
   }
 

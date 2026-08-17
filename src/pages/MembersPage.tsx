@@ -279,7 +279,14 @@ export const MembersPage: React.FC = () => {
 
       {/* 4. Member Profile Modal with Strict Privacy Handling (Spec Section 22) */}
       {activeModalMember && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-150">
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-150"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              handleCloseDetail();
+            }
+          }}
+        >
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-200 flex items-center justify-between gap-4 bg-slate-50">
@@ -338,7 +345,7 @@ export const MembersPage: React.FC = () => {
                     <span className="font-bold text-slate-800">{activeModalMember.native_place}</span>
                   </div>
                 )}
-                {activeModalMember.city && (
+                {activeModalMember.visibility.address_public && activeModalMember.city && (
                   <div>
                     <span className="text-slate-500 block">Current City:</span>
                     <span className="font-bold text-slate-800">
@@ -346,6 +353,30 @@ export const MembersPage: React.FC = () => {
                     </span>
                   </div>
                 )}
+                {activeModalMember.visibility.address_public &&
+                  (activeModalMember.address ||
+                    activeModalMember.address_line_2 ||
+                    activeModalMember.city ||
+                    activeModalMember.state ||
+                    activeModalMember.postal_code ||
+                    activeModalMember.country) && (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-500 block">Address:</span>
+                      <span className="font-bold text-slate-800 whitespace-pre-line">
+                        {[
+                          activeModalMember.address,
+                          activeModalMember.address_line_2,
+                          [activeModalMember.city, activeModalMember.state]
+                            .filter(Boolean)
+                            .join(', '),
+                          activeModalMember.postal_code,
+                          activeModalMember.country,
+                        ]
+                          .filter(Boolean)
+                          .join('\n')}
+                      </span>
+                    </div>
+                  )}
                 {activeModalMember.joining_date && (
                   <div>
                     <span className="text-slate-500 block">Member Since:</span>

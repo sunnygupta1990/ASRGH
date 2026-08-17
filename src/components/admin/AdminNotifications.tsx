@@ -14,7 +14,7 @@ import { useApp } from '../../context/AppContext';
 import { NotificationRecord } from '../../types';
 
 export const AdminNotifications: React.FC = () => {
-  const { notifications, sendNotification, announcements, events, socialWorkActivities, members } = useApp();
+  const { notifications, sendNotification, updateNotification, deleteNotification, announcements, events, socialWorkActivities } = useApp();
 
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
@@ -23,7 +23,7 @@ export const AdminNotifications: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !message.trim()) {
       alert('Please enter notification title and message.');
@@ -31,21 +31,24 @@ export const AdminNotifications: React.FC = () => {
     }
 
     setIsSending(true);
-    setTimeout(() => {
-      sendNotification({
+    try {
+      await sendNotification({
         title: title.trim(),
         message: message.trim(),
         destination_type: destinationType,
         destination_id: destinationId || undefined,
-        status: 'sent',
+        status: 'scheduled',
       });
 
-      setIsSending(false);
-      setSuccessMessage('Broadcast notification successfully pushed to all registered subscriber devices!');
+      setSuccessMessage('Notification record created. No external delivery provider is configured.');
       setTitle('');
       setMessage('');
       setTimeout(() => setSuccessMessage(''), 5000);
-    }, 600);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to create notification.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -55,16 +58,16 @@ export const AdminNotifications: React.FC = () => {
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Bell className="w-5 h-5 text-amber-600" />
-            <span>Mobile Push Broadcast & Notification Center</span>
+            <span>Notification Center</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Deliver instant broadcast alerts, event reminders, and emergency circular updates to community members.
+            Create and manage notification records. External device delivery is not configured.
           </p>
         </div>
 
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
           <Smartphone className="w-4 h-4 text-emerald-600" />
-          <span>Active Device Reach: <strong>{members.length * 3 + 120} Devices</strong></span>
+          <span>Notification records: <strong>{notifications.length}</strong></span>
         </div>
       </div>
 
@@ -188,7 +191,7 @@ export const AdminNotifications: React.FC = () => {
                 className="w-full sm:w-auto px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                <span>{isSending ? 'Transmitting Broadcast...' : 'Transmit Broadcast Alert'}</span>
+                <span>{isSending ? 'Saving Notification...' : 'Create Notification Record'}</span>
               </button>
             </div>
           </form>
@@ -227,9 +230,9 @@ export const AdminNotifications: React.FC = () => {
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <h4 className="font-bold text-slate-900 text-xs flex items-center gap-2">
             <Clock className="w-4 h-4 text-slate-500" />
-            <span>Broadcast Logs & Transmission History</span>
+            <span>Notification Records</span>
           </h4>
-          <span className="text-[10px] text-slate-500">{notifications.length} Broadcasts Sent</span>
+          <span className="text-[10px] text-slate-500">{notifications.length} records</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -239,8 +242,9 @@ export const AdminNotifications: React.FC = () => {
                 <th className="py-3 px-4">Subject & Message</th>
                 <th className="py-3 px-4">Channel / Deep Link</th>
                 <th className="py-3 px-4">Operator</th>
-                <th className="py-3 px-4">Recipients</th>
-                <th className="py-3 px-4">Sent At</th>
+                <th className="py-3 px-4">State</th>
+                <th className="py-3 px-4">Created At</th>
+                <th className="py-3 px-4">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -257,9 +261,13 @@ export const AdminNotifications: React.FC = () => {
                   </td>
                   <td className="py-3.5 px-4 font-medium text-slate-700">{n.sender_name}</td>
                   <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
-                    {n.targeted_devices} devices
+                    {n.is_read ? 'Read' : 'Unread'}
                   </td>
                   <td className="py-3.5 px-4 text-slate-400 font-mono text-[10px]">{n.sent_at}</td>
+                  <td className="py-3.5 px-4 space-x-2">
+                    <button onClick={async () => { try { await updateNotification(n.id, { is_read: !n.is_read }); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to update notification.'); } }} className="text-blue-800 font-bold">Mark {n.is_read ? 'unread' : 'read'}</button>
+                    <button onClick={async () => { if (!confirm('Delete this notification record?')) return; try { await deleteNotification(n.id); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to delete notification.'); } }} className="text-rose-700 font-bold">Delete</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

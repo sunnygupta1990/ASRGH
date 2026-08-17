@@ -30,6 +30,7 @@ export const AdminAnnouncements: React.FC<{ onNavigateTab: (tab: string) => void
   const [formData, setFormData] = useState<Partial<Announcement>>({
     announcement_code: '',
     title: '',
+    summary: '',
     content: '',
     important: false,
     featured: false,
@@ -58,6 +59,7 @@ export const AdminAnnouncements: React.FC<{ onNavigateTab: (tab: string) => void
     setFormData({
       announcement_code: nextCode,
       title: '',
+      summary: '',
       content: '',
       important: false,
       featured: true,
@@ -75,7 +77,7 @@ export const AdminAnnouncements: React.FC<{ onNavigateTab: (tab: string) => void
     setIsEditing(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.content) {
       alert('Please fill in Announcement Title and Content.');
@@ -83,12 +85,13 @@ export const AdminAnnouncements: React.FC<{ onNavigateTab: (tab: string) => void
     }
 
     if (selectedAnn) {
-      updateAnnouncement(selectedAnn.id, formData);
+      try { await updateAnnouncement(selectedAnn.id, formData); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to update announcement.'); return; }
     } else {
       const newAnn: Announcement = {
         id: `ann-${Date.now()}`,
         announcement_code: formData.announcement_code || `ANN-${Date.now()}`,
-        title: formData.title || '',
+          title: formData.title || '',
+          summary: formData.summary,
         content: formData.content || '',
         important: formData.important || false,
         featured: formData.featured || false,
@@ -96,7 +99,7 @@ export const AdminAnnouncements: React.FC<{ onNavigateTab: (tab: string) => void
         expiry_date: formData.expiry_date,
         status: (formData.status as AnnouncementStatus) || 'published',
       };
-      addAnnouncement(newAnn);
+      try { await addAnnouncement(newAnn); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to create announcement.'); return; }
     }
     setIsEditing(false);
   };
@@ -221,7 +224,7 @@ export const AdminAnnouncements: React.FC<{ onNavigateTab: (tab: string) => void
                     </td>
                     <td className="py-3.5 px-4">
                       <button
-                        onClick={() => updateAnnouncement(ann.id, { important: !ann.important })}
+                        onClick={async () => { try { await updateAnnouncement(ann.id, { important: !ann.important }); } catch (error) { alert(error instanceof Error ? error.message : 'Unable to update announcement.'); } }}
                         className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors ${
                           ann.important
                             ? 'bg-rose-600 text-white'
@@ -257,7 +260,7 @@ export const AdminAnnouncements: React.FC<{ onNavigateTab: (tab: string) => void
                         <button
                           onClick={() => {
                             if (confirm(`Are you sure you want to delete "${ann.title}"?`)) {
-                              deleteAnnouncement(ann.id);
+                              void deleteAnnouncement(ann.id).catch((error) => alert(error instanceof Error ? error.message : 'Unable to delete announcement.'));
                             }
                           }}
                           title="Delete Notice"
@@ -330,6 +333,10 @@ export const AdminAnnouncements: React.FC<{ onNavigateTab: (tab: string) => void
                   required
                 />
               </div>
+
+              <div><label className="block font-bold text-slate-700 mb-1">Summary</label><textarea rows={2} value={formData.summary || ''} onChange={(e) => setFormData({ ...formData, summary: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800" /></div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block font-bold text-slate-700 mb-1">Cover Media ID</label><input value={formData.cover_media_id || ''} onChange={(e) => setFormData({ ...formData, cover_media_id: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono" /></div><div><label className="block font-bold text-slate-700 mb-1">Metadata JSON</label><textarea key={selectedAnn?.id ?? 'new'} defaultValue={JSON.stringify(formData.metadata ?? {}, null, 2)} onBlur={(e) => { try { setFormData({ ...formData, metadata: JSON.parse(e.target.value) }); } catch { alert('Metadata must be valid JSON.'); } }} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono" /></div></div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

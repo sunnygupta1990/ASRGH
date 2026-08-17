@@ -11,12 +11,14 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { updateAdminEventPhotoCaption, uploadAdminEventPhotos } from '../../api/events';
 
 type UploadPreview = {
   id: string;
   name: string;
   dataUrl: string;
   caption: string;
+  file: File;
 };
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -29,7 +31,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export const AdminGallery: React.FC = () => {
-  const { events, socialWorkActivities, milestones, openLightbox, addEventPhotos } = useApp();
+  const { events, socialWorkActivities, milestones, openLightbox, refreshEventsFromApi } = useApp();
   const inputRef = useRef<HTMLInputElement>(null);
   const [filterType, setFilterType] = useState<'all' | 'events' | 'social_work' | 'milestones'>('all');
   const [search, setSearch] = useState('');
@@ -136,6 +138,7 @@ export const AdminGallery: React.FC = () => {
         name: file.name,
         dataUrl: await readFileAsDataUrl(file),
         caption: caption.trim(),
+        file,
       });
     }
 
@@ -147,26 +150,28 @@ export const AdminGallery: React.FC = () => {
     );
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!targetEventId || previews.length === 0) return;
     const event = events.find((item) => item.id === targetEventId);
-    const existingCount = event?.photos?.length || 0;
-
-    addEventPhotos(
-      targetEventId,
-      previews.map((preview, index) => ({
-        id: `photo-${Date.now()}-${index}`,
-        photo_url: preview.dataUrl,
-        thumbnail_url: preview.dataUrl,
-        caption: preview.caption || caption.trim() || preview.name.replace(/\.[^.]+$/, ''),
-        display_order: existingCount + index + 1,
-        uploaded_at: new Date().toISOString(),
-      }))
-    );
-
-    setPreviews([]);
-    setCaption('');
-    setUploadMessage('Photos uploaded successfully to the event album.');
+    if (!event?.album_code) {
+      setUploadMessage('The selected event does not have an album.');
+      return;
+    }
+    try {
+      const uploaded = await uploadAdminEventPhotos(event.album_code, previews.map((preview) => preview.file));
+      await Promise.all(uploaded.map((photo, index) => {
+        const photoCaption = previews[index]?.caption.trim();
+        return photoCaption
+          ? updateAdminEventPhotoCaption(event.album_code!, photo.id, photoCaption)
+          : Promise.resolve();
+      }));
+      await refreshEventsFromApi();
+      setPreviews([]);
+      setCaption('');
+      setUploadMessage('Photos uploaded successfully to the event album.');
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : 'Unable to upload photos.');
+    }
   };
 
   const openUploader = (eventId?: string) => {

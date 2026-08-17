@@ -25,12 +25,13 @@ export const AdminDashboard: React.FC<{ onNavigateTab: (tab: string) => void }> 
     auditLogs,
     rejectedRecords,
     currentUser,
+    dashboardData,
   } = useApp();
 
-  const activeMembers = members.filter((m) => m.status === 'active').length;
-  const upcomingEvents = events.filter((e) => e.status === 'upcoming').length;
-  const activeSocialWork = socialWorkActivities.filter((s) => s.status === 'active').length;
-  const newInquiries = contactSubmissions.filter((c) => c.status === 'new').length;
+  const activeMembers = dashboardData?.counts.members ?? 0;
+  const upcomingEvents = dashboardData?.counts.events ?? 0;
+  const activeSocialWork = dashboardData?.counts.socialWork ?? 0;
+  const newInquiries = dashboardData?.counts.contacts ?? 0;
 
   const quickStats = [
     {
@@ -125,13 +126,13 @@ export const AdminDashboard: React.FC<{ onNavigateTab: (tab: string) => void }> 
       </div>
 
       {/* Rejected Records Attention Banner if any exist */}
-      {rejectedRecords.filter((r) => r.status === 'pending').length > 0 && (
+      {rejectedRecords.filter((r) => r.status === 'rejected').length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
             <div>
               <h4 className="font-bold text-amber-900 text-sm">
-                {rejectedRecords.filter((r) => r.status === 'pending').length} Import Records Need Attention
+                {rejectedRecords.filter((r) => r.status === 'rejected').length} Import Records Need Attention
               </h4>
               <p className="text-xs text-amber-700">
                 Excel rows failed validation (duplicates or missing mandatory fields). Review and correct them in the Import engine.

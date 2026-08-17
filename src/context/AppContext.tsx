@@ -41,33 +41,44 @@ import {
   ImportBatch,
   Employee,
   Role,
+  UserPermission,
   TextScale,
   AppLanguage,
   EventPhoto,
 } from '../types';
 import {
-  INITIAL_SETTINGS,
-  INITIAL_SOCIAL_LINKS,
-  INITIAL_MEMBERS,
-  INITIAL_SOCIAL_WORK_CATEGORIES,
-  INITIAL_SOCIAL_WORK_ACTIVITIES,
-  INITIAL_EVENTS,
-  INITIAL_ANNOUNCEMENTS,
-  INITIAL_MILESTONES,
-  INITIAL_ACHIEVEMENTS,
-  INITIAL_STATISTICS,
-  INITIAL_ROLES,
-  INITIAL_EMPLOYEES,
-  INITIAL_CONTACT_SUBMISSIONS,
-  INITIAL_AUDIT_LOGS,
-} from '../data/initialData';
-import {
   archiveAdminEvent,
   createAdminEvent,
+  deleteAdminEvent,
   fetchAdminEvents,
   updateAdminEvent,
 } from '../api/events';
-import { fetchPublicContent } from '../api/publicContent';
+import { fetchPublicContent, submitPublicContact } from '../api/publicContent';
+import {
+  archiveAnnouncementApi,
+  archiveSocialWorkActivityApi,
+  createAnnouncementApi,
+  createNotificationApi,
+  createSocialWorkActivityApi,
+  deleteAnnouncementApi,
+  deleteSocialWorkActivityApi,
+  fetchAdminPortalState,
+  updateAnnouncementApi,
+  updateContactApi,
+  updateSocialWorkActivityApi,
+  commitImportApi,
+  resolveRejectedRecordApi,
+  updateAdminUserApi,
+  updateNotificationApi,
+  deleteNotificationApi,
+  createSocialWorkCategoryApi,
+  updateSocialWorkCategoryApi,
+  deleteSocialWorkCategoryApi,
+  fetchDashboardApi,
+  DashboardData,
+  updateSettingsBundleApi,
+} from '../api/adminPortal';
+
 import {
   readNavigationState,
   serializeNavigationState,
@@ -76,6 +87,12 @@ import type { NavigationState } from '../utils/navigation';
 import type { ActivePage } from '../utils/navigation';
 
 export type { ActivePage } from '../utils/navigation';
+
+const EMPTY_SETTINGS: OrganizationSettings = {
+  organization_name: '', tagline: '', legal_name: '', primary_email: '', primary_phone: '', whatsapp_number: '',
+  address_line_1: '', address_line_2: '', city: '', state: '', postal_code: '', country: '', google_maps_url: '', office_hours: '',
+  show_phone: false, show_email: false, show_whatsapp: false, show_address: false, show_office_hours: false, show_map: false,
+};
 
 interface LightboxState {
   photos: { url: string; caption?: string; title?: string }[];
@@ -102,23 +119,23 @@ interface AppContextType {
   closeLightbox: () => void;
 
   settings: OrganizationSettings;
-  updateSettings: (newSettings: Partial<OrganizationSettings>) => void;
+  updateSettings: (newSettings: Partial<OrganizationSettings>) => Promise<void>;
   socialLinks: SocialLink[];
-  updateSocialLinks: (links: SocialLink[]) => void;
+  updateSocialLinks: (links: SocialLink[]) => Promise<void>;
   statistics: StatisticItem[];
+  dashboardData: DashboardData | null;
   updateStatistic: (
     id: string,
     overrideValue: number,
     isOverridden: boolean,
-  ) => void;
+  ) => Promise<void>;
 
   members: Member[];
   publicMembers: Member[];
-  addMember: (member: Member) => Promise<void>;
+  addMember: (member: Member) => Promise<Member>;
   updateMember: (id: string, member: Partial<Member>) => Promise<void>;
   archiveMember: (id: string) => Promise<void>;
   deleteMember: (id: string) => Promise<void>;
-  bulkAddMembers: (newMembers: Member[]) => void;
 
   events: Event[];
   publicEvents: Event[];
@@ -127,31 +144,28 @@ interface AppContextType {
   updateEvent: (id: string, event: Partial<Event>) => Promise<void>;
   archiveEvent: (id: string) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
-  bulkAddEvents: (newEvents: Event[]) => void;
-  addEventPhoto: (eventId: string, photo: EventPhoto) => void;
-  addEventPhotos: (eventId: string, photos: EventPhoto[]) => void;
 
   socialWorkCategories: SocialWorkCategory[];
+  addSocialWorkCategory: (category: Omit<SocialWorkCategory, 'id'>) => Promise<void>;
+  updateSocialWorkCategory: (id: string, category: Partial<SocialWorkCategory>) => Promise<void>;
+  deleteSocialWorkCategory: (id: string) => Promise<void>;
   socialWorkActivities: SocialWorkActivity[];
-  addSocialWorkActivity: (act: SocialWorkActivity) => void;
+  addSocialWorkActivity: (act: SocialWorkActivity) => Promise<void>;
   updateSocialWorkActivity: (
     id: string,
     act: Partial<SocialWorkActivity>,
-  ) => void;
-  archiveSocialWorkActivity: (id: string) => void;
-  deleteSocialWorkActivity: (id: string) => void;
+  ) => Promise<void>;
+  archiveSocialWorkActivity: (id: string) => Promise<void>;
+  deleteSocialWorkActivity: (id: string) => Promise<void>;
 
   announcements: Announcement[];
-  addAnnouncement: (ann: Announcement) => void;
-  updateAnnouncement: (id: string, ann: Partial<Announcement>) => void;
-  archiveAnnouncement: (id: string) => void;
-  deleteAnnouncement: (id: string) => void;
-  bulkAddAnnouncements: (anns: Announcement[]) => void;
+  addAnnouncement: (ann: Announcement) => Promise<void>;
+  updateAnnouncement: (id: string, ann: Partial<Announcement>) => Promise<void>;
+  archiveAnnouncement: (id: string) => Promise<void>;
+  deleteAnnouncement: (id: string) => Promise<void>;
 
   milestones: Milestone[];
   achievements: Achievement[];
-  addMilestone: (m: Milestone) => void;
-  addAchievement: (a: Achievement) => void;
 
   contactSubmissions: ContactSubmission[];
   addContactSubmission: (
@@ -159,13 +173,13 @@ interface AppContextType {
       ContactSubmission,
       'id' | 'submission_code' | 'created_at' | 'status'
     >,
-  ) => void;
+  ) => Promise<string>;
   updateContactStatus: (
     id: string,
     status: ContactSubmission['status'],
     assignedTo?: string,
     notes?: string,
-  ) => void;
+  ) => Promise<void>;
 
   notifications: NotificationRecord[];
   sendNotification: (
@@ -173,22 +187,19 @@ interface AppContextType {
       NotificationRecord,
       'id' | 'sent_at' | 'sender_name' | 'targeted_devices'
     >,
-  ) => void;
+  ) => Promise<void>;
+  updateNotification: (id: string, data: Partial<NotificationRecord>) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
 
   auditLogs: AuditLog[];
-  addAuditLog: (
-    action: string,
-    module: string,
-    details: string,
-    entityId?: string,
-  ) => void;
 
   rejectedRecords: RejectedRecord[];
-  addRejectedRecords: (records: RejectedRecord[]) => void;
-  resolveRejectedRecord: (id: string) => void;
+  resolveRejectedRecord: (id: string) => Promise<void>;
 
   importBatches: ImportBatch[];
-  addImportBatch: (batch: ImportBatch) => void;
+  commitImport: (entityType: 'members' | 'events' | 'social_work' | 'announcements', filename: string, rows: Record<string, string>[]) => Promise<{ accepted: number; rejected: number }>;
+  updateAdminUser: (id: string, data: { status?: string; roleIds?: string[] }) => Promise<void>;
+  hasPermission: (permission: string) => boolean;
 
   isAuthenticated: boolean;
   authLoading: boolean;
@@ -204,7 +215,6 @@ interface AppContextType {
   roles: Role[];
   activeAdminTab: string;
   setActiveAdminTab: (tab: string) => void;
-  resetAllDataToDefault: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -230,16 +240,21 @@ function saveStored<T>(key: string, value: T): void {
 
 function mapAuthUserToEmployee(
   user: AuthUser,
-  fallback: Employee,
+  fallback?: Employee,
 ): Employee {
   return {
-    ...fallback,
+    phone: '',
+    designation: '',
+    ...(fallback ?? {}),
     id: user.id,
     employee_code: 'ADMIN',
     full_name: user.displayName,
     email: user.email,
-    role_id: 'super-admin',
-    role_name: 'Super Admin',
+    role_id: user.roleId ?? '',
+    role_name: user.roleName ?? 'Admin',
+    role_ids: user.roles?.map((role) => role.id) ?? (user.roleId ? [user.roleId] : []),
+    permission_codes: user.permissions ?? [],
+    is_system_role: user.isSystemRole === true,
     status: 'active',
     last_login_at: user.lastLoginAt ?? undefined,
   };
@@ -376,144 +391,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     isOpen: false,
   });
 
-  const [settings, setSettings] = useState<OrganizationSettings>(() =>
-    loadStored('settings', INITIAL_SETTINGS),
-  );
-  const [socialLinks, setSocialLinks] = useState<SocialLink[]>(() =>
-    loadStored('social_links', INITIAL_SOCIAL_LINKS),
-  );
-  const [statistics, setStatistics] = useState<StatisticItem[]>(() =>
-    loadStored('statistics', INITIAL_STATISTICS),
-  );
+  const [settings, setSettings] = useState<OrganizationSettings>(EMPTY_SETTINGS);
+  const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
+  const [statistics, setStatistics] = useState<StatisticItem[]>([]);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [publicMembers, setPublicMembers] = useState<Member[]>([]);
   const [socialWorkCategories, setSocialWorkCategories] = useState<
     SocialWorkCategory[]
-  >(() => loadStored('sw_categories', INITIAL_SOCIAL_WORK_CATEGORIES));
+  >([]);
   const [socialWorkActivities, setSocialWorkActivities] = useState<
     SocialWorkActivity[]
-  >(() => loadStored('sw_activities', INITIAL_SOCIAL_WORK_ACTIVITIES));
+  >([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [publicEvents, setPublicEvents] = useState<Event[]>([]);
   const [publicContentError, setPublicContentError] = useState<string | null>(
     null,
   );
-  const [announcements, setAnnouncements] = useState<Announcement[]>(() =>
-    loadStored('announcements', INITIAL_ANNOUNCEMENTS),
-  );
-  const [milestones, setMilestones] = useState<Milestone[]>(() =>
-    loadStored('milestones', INITIAL_MILESTONES),
-  );
-  const [achievements, setAchievements] = useState<Achievement[]>(() =>
-    loadStored('achievements', INITIAL_ACHIEVEMENTS),
-  );
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [contactSubmissions, setContactSubmissions] = useState<
     ContactSubmission[]
-  >(() => loadStored('contacts', INITIAL_CONTACT_SUBMISSIONS));
-  const [notifications, setNotifications] = useState<NotificationRecord[]>(
-    () => loadStored('notifications', []),
-  );
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() =>
-    loadStored('audit_logs', INITIAL_AUDIT_LOGS),
-  );
+  >([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
-  const UAT_REJECTED_RECORDS: RejectedRecord[] = [
-    {
-      id: 'rej-uat-001',
-      batch_id: 'BATCH-MEM-2026-004',
-      module: 'members',
-      row_number: 7,
-      record_reference: 'MEM-0016',
-      raw_data: {
-        'Member Code': 'MEM-0016',
-        'First Name': '',
-        'Last Name': 'Mehta',
-        'Member Category': 'Life Member',
-      },
-      error_message: 'Missing required field: First Name.',
-      suggested_fix:
-        'Enter the member first name and upload the corrected file.',
-      rejected_at: '2026-08-12 11:24',
-      status: 'rejected',
-    },
-    {
-      id: 'rej-uat-002',
-      batch_id: 'BATCH-MEM-2026-004',
-      module: 'members',
-      row_number: 11,
-      record_reference: 'MEM-0003',
-      raw_data: {
-        'Member Code': 'MEM-0003',
-        'First Name': 'Priya',
-        'Last Name': 'Gupta',
-      },
-      error_message: 'Duplicate Member Code already exists.',
-      suggested_fix: 'Use a new unique Member Code.',
-      rejected_at: '2026-08-12 11:24',
-      status: 'rejected',
-    },
-    {
-      id: 'rej-uat-003',
-      batch_id: 'BATCH-EVT-2026-002',
-      module: 'events',
-      row_number: 5,
-      record_reference: 'EVT-2026-009',
-      raw_data: {
-        'Event Code': 'EVT-2026-009',
-        'Event Title': 'Medical Camp',
-        'Event Date': 'not-a-date',
-      },
-      error_message: 'Event Date is not a valid date.',
-      suggested_fix: 'Use YYYY-MM-DD format.',
-      rejected_at: '2026-08-10 15:05',
-      status: 'rejected',
-    },
-  ];
+  const [rejectedRecords, setRejectedRecords] = useState<RejectedRecord[]>([]);
+  const [importBatches, setImportBatches] = useState<ImportBatch[]>([]);
 
-  const [rejectedRecords, setRejectedRecords] = useState<
-    RejectedRecord[]
-  >(() => loadStored('rejected_records', UAT_REJECTED_RECORDS));
-
-  const UAT_IMPORT_BATCHES: ImportBatch[] = [
-    {
-      id: 'batch-uat-001',
-      batch_code: 'BATCH-MEM-2026-004',
-      module_name: 'Members',
-      file_name: 'members_august_2026.xlsx',
-      total_rows: 14,
-      passed_rows: 12,
-      failed_rows: 2,
-      warning_rows: 1,
-      uploaded_by: 'Anil Bansal',
-      uploaded_at: '2026-08-12 11:24',
-      status: 'completed',
-    },
-    {
-      id: 'batch-uat-002',
-      batch_code: 'BATCH-EVT-2026-002',
-      module_name: 'Events',
-      file_name: 'events_august_2026.xlsx',
-      total_rows: 8,
-      passed_rows: 7,
-      failed_rows: 1,
-      warning_rows: 0,
-      uploaded_by: 'Anil Bansal',
-      uploaded_at: '2026-08-10 15:05',
-      status: 'completed',
-    },
-  ];
-
-  const [importBatches, setImportBatches] = useState<ImportBatch[]>(() =>
-    loadStored('import_batches', UAT_IMPORT_BATCHES),
-  );
-
-  const [roles] = useState<Role[]>(() =>
-    loadStored('roles', INITIAL_ROLES),
-  );
-  const [employees] = useState<Employee[]>(() =>
-    loadStored('employees', INITIAL_EMPLOYEES),
-  );
-  const [currentUser, setCurrentUser] = useState<Employee>(employees[0]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [currentUser, setCurrentUser] = useState<Employee>({ id: '', employee_code: '', full_name: '', email: '', phone: '', designation: '', role_id: '', role_name: '', status: 'active' });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -531,11 +440,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setPublicContentError(null);
 
     try {
-      const { events: remoteEvents, members: remoteMembers } =
+      const { events: remoteEvents, members: remoteMembers, settings: publicSettings } =
         await fetchPublicContent();
 
       setPublicEvents(remoteEvents);
       setPublicMembers(remoteMembers);
+      const organization = publicSettings.organization;
+      const websiteSetting = publicSettings.websiteSetting;
+      const uiState = websiteSetting?.customFields && typeof websiteSetting.customFields === 'object'
+        ? ((websiteSetting.customFields as Record<string, unknown>).adminUiState as Record<string, unknown> | undefined)
+        : undefined;
+      const storedSettings = uiState?.settings as Partial<OrganizationSettings> | undefined;
+      setSettings((previous) => ({
+        ...previous,
+        ...(storedSettings ?? {}),
+        organization_name: typeof organization.name === 'string' ? organization.name : previous.organization_name,
+        legal_name: typeof organization.legalName === 'string' ? organization.legalName : previous.legal_name,
+        primary_email: typeof organization.email === 'string' ? organization.email : previous.primary_email,
+        primary_phone: typeof organization.phone === 'string' ? organization.phone : previous.primary_phone,
+      }));
     } catch (error) {
       setPublicContentError(
         error instanceof Error
@@ -544,6 +467,517 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       );
       throw error;
     }
+  };
+
+  const refreshAdminPortalState = async () => {
+    const state = await fetchAdminPortalState();
+    const ui = state.adminUiState;
+
+    if (ui.settings) {
+      setSettings((prev) => ({ ...prev, ...ui.settings }));
+    } else if (state.organization) {
+      const organization = state.organization;
+      setSettings((prev) => ({
+        ...prev,
+        organization_name:
+          typeof organization.name === 'string'
+            ? organization.name
+            : prev.organization_name,
+        legal_name:
+          typeof organization.legalName === 'string'
+            ? organization.legalName
+            : prev.legal_name,
+        primary_email:
+          typeof organization.email === 'string'
+            ? organization.email
+            : prev.primary_email,
+        primary_phone:
+          typeof organization.phone === 'string'
+            ? organization.phone
+            : prev.primary_phone,
+        address_line_1:
+          typeof organization.addressLine1 === 'string'
+            ? organization.addressLine1
+            : prev.address_line_1,
+        address_line_2:
+          typeof organization.addressLine2 === 'string'
+            ? organization.addressLine2
+            : prev.address_line_2,
+        city:
+          typeof organization.city === 'string'
+            ? organization.city
+            : prev.city,
+        state:
+          typeof organization.state === 'string'
+            ? organization.state
+            : prev.state,
+        postal_code:
+          typeof organization.postalCode === 'string'
+            ? organization.postalCode
+            : prev.postal_code,
+        country:
+          typeof organization.country === 'string'
+            ? organization.country
+            : prev.country,
+      }));
+    }
+
+    if (Array.isArray(ui.socialLinks)) {
+      setSocialLinks(ui.socialLinks);
+    }
+
+    if (Array.isArray(ui.statistics)) {
+      setStatistics(ui.statistics);
+    }
+
+    if (Array.isArray(ui.milestones)) {
+      setMilestones(ui.milestones);
+    }
+
+    if (Array.isArray(ui.achievements)) {
+      setAchievements(ui.achievements as Achievement[]);
+    }
+
+    setSocialWorkCategories(
+      state.socialWorkCategories.map((category) => {
+        const item = category as Record<string, unknown>;
+        return {
+          id: String(item.id),
+          name: String(item.name ?? ''),
+          description:
+            typeof item.description === 'string'
+              ? item.description
+              : undefined,
+          icon_name:
+            typeof item.iconKey === 'string'
+              ? item.iconKey
+              : undefined,
+          display_order:
+            typeof item.displayOrder === 'number'
+              ? item.displayOrder
+              : 0,
+          status: item.isActive === false ? 'archived' : 'active',
+        };
+      }),
+    );
+
+    setSocialWorkActivities(
+      state.socialWorkActivities.map((activity) => {
+        const item = activity as Record<string, unknown>;
+        const category =
+          item.category as Record<string, unknown> | null | undefined;
+        const customFields =
+          item.customFields as Record<string, unknown> | null | undefined;
+
+        return {
+          id: String(item.id),
+          activity_code:
+            typeof customFields?.activity_code === 'string'
+              ? customFields.activity_code
+              : String(item.slug ?? item.id),
+          category_id:
+            typeof item.categoryId === 'string' ? item.categoryId : '',
+          category_name:
+            typeof category?.name === 'string'
+              ? category.name
+              : '',
+          title: String(item.title ?? ''),
+          summary: typeof item.summary === 'string' ? item.summary : undefined,
+          description:
+            typeof item.description === 'string'
+              ? item.description
+              : '',
+          type:
+            customFields?.type === 'Individual Project'
+              ? 'Individual Project'
+              : 'Ongoing Initiative',
+          start_date:
+            typeof item.startDate === 'string'
+              ? item.startDate.slice(0, 10)
+              : undefined,
+          end_date:
+            typeof item.endDate === 'string'
+              ? item.endDate.slice(0, 10)
+              : undefined,
+          location:
+            typeof customFields?.location === 'string'
+              ? customFields.location
+              : undefined,
+          status:
+            item.status === 'archived'
+              ? 'archived'
+              : item.status === 'deleted'
+                ? 'deleted'
+                : 'active',
+          featured:
+            customFields?.featured === true,
+          display_order:
+            typeof item.displayOrder === 'number'
+              ? item.displayOrder
+              : 0,
+          photos: Array.isArray(customFields?.photos)
+            ? customFields.photos.filter(
+                (photo): photo is string => typeof photo === 'string',
+              )
+            : [],
+          beneficiaries_count:
+            typeof customFields?.beneficiaries_count === 'number'
+              ? customFields.beneficiaries_count
+              : undefined,
+          published_at: typeof item.publishedAt === 'string' ? item.publishedAt : undefined,
+          cover_media_id: typeof item.coverMediaId === 'string' ? item.coverMediaId : undefined,
+          metadata: (item.metadata as Record<string, unknown> | undefined) ?? {},
+          custom_fields: customFields ?? {},
+        };
+      }),
+    );
+
+    setAnnouncements(
+      state.announcements.map((announcement) => {
+        const item = announcement as Record<string, unknown>;
+        const customFields =
+          item.customFields as Record<string, unknown> | null | undefined;
+
+        return {
+          id: String(item.id),
+          announcement_code:
+            typeof customFields?.announcement_code === 'string'
+              ? customFields.announcement_code
+              : String(item.slug ?? item.id),
+          title: String(item.title ?? ''),
+          summary: typeof item.summary === 'string' ? item.summary : undefined,
+          content: String(item.body ?? ''),
+          important: customFields?.important === true,
+          featured: customFields?.featured === true,
+          publish_date:
+            typeof item.publishedAt === 'string'
+              ? item.publishedAt.slice(0, 10)
+              : '',
+          expiry_date:
+            typeof item.expiresAt === 'string'
+              ? item.expiresAt.slice(0, 10)
+              : undefined,
+          status:
+            item.status === 'draft' ||
+            item.status === 'scheduled' ||
+            item.status === 'archived'
+              ? item.status
+              : 'published',
+          cover_media_id: typeof item.coverMediaId === 'string' ? item.coverMediaId : undefined,
+          metadata: (item.metadata as Record<string, unknown> | undefined) ?? {},
+          custom_fields: customFields ?? {},
+        };
+      }),
+    );
+
+    setContactSubmissions(
+      state.contacts.map((contact) => {
+        const item = contact as Record<string, unknown>;
+        const assignee =
+          item.assignee as Record<string, unknown> | null | undefined;
+        const metadata =
+          item.metadata as Record<string, unknown> | null | undefined;
+
+        return {
+          id: String(item.id),
+          submission_code:
+            typeof metadata?.submission_code === 'string'
+              ? metadata.submission_code
+              : String(item.id),
+          name: String(item.name ?? ''),
+          email: typeof item.email === 'string' ? item.email : '',
+          phone: typeof item.phone === 'string' ? item.phone : '',
+          subject:
+            typeof item.subject === 'string' ? item.subject : '',
+          message: String(item.message ?? ''),
+          category:
+            typeof metadata?.category === 'string'
+              ? metadata.category
+              : undefined,
+          status:
+            item.status === 'assigned' ||
+            item.status === 'in_progress' ||
+            item.status === 'resolved' ||
+            item.status === 'closed'
+              ? item.status
+              : 'new',
+          assigned_to_employee_id:
+            typeof item.assignedTo === 'string'
+              ? item.assignedTo
+              : undefined,
+          assigned_to_name:
+            typeof assignee?.displayName === 'string'
+              ? assignee.displayName
+              : undefined,
+          admin_notes:
+            typeof metadata?.adminNotes === 'string'
+              ? metadata.adminNotes
+              : undefined,
+          created_at:
+            typeof item.createdAt === 'string'
+              ? item.createdAt
+              : new Date().toISOString(),
+          resolved_at:
+            typeof item.respondedAt === 'string'
+              ? item.respondedAt
+              : undefined,
+        };
+      }),
+    );
+
+    setNotifications(
+      state.notifications.map((notification) => {
+        const item = notification as Record<string, unknown>;
+        const notificationMetadata = item.metadata as Record<string, unknown> | undefined;
+        const sender = item.adminUser as Record<string, unknown> | null | undefined;
+        return {
+          id: String(item.id),
+          title: String(item.title ?? ''),
+          message: String(item.message ?? ''),
+          destination_type:
+            item.type === 'announcement' ||
+            item.type === 'event' ||
+            item.type === 'social_work'
+              ? item.type
+              : 'general',
+          destination_id:
+            typeof item.linkUrl === 'string'
+              ? item.linkUrl
+              : undefined,
+          sender_name: typeof sender?.displayName === 'string' ? sender.displayName : 'System',
+          sent_at:
+            typeof item.createdAt === 'string'
+              ? item.createdAt
+              : new Date().toISOString(),
+          targeted_devices: 0,
+          status: notificationMetadata?.deliveryStatus === 'failed' ? 'failed' : 'scheduled',
+          is_read: item.isRead === true,
+        };
+      }),
+    );
+
+    setAuditLogs(
+      state.auditLogs.map((log) => {
+        const item = log as Record<string, unknown>;
+        const actor =
+          item.actor as Record<string, unknown> | null | undefined;
+        const metadata =
+          item.metadata as Record<string, unknown> | null | undefined;
+        const actorRoles = Array.isArray(actor?.roles) ? actor.roles : [];
+        const actorRole = actorRoles[0] as Record<string, unknown> | undefined;
+        const actorRoleData = actorRole?.role as Record<string, unknown> | undefined;
+
+        return {
+          id: String(item.id),
+          actor_name:
+            typeof actor?.displayName === 'string'
+              ? actor.displayName
+              : 'System',
+          actor_role: typeof actorRoleData?.name === 'string' ? actorRoleData.name : 'System',
+          action: String(item.action ?? ''),
+          module: String(item.entityType ?? 'system'),
+          entity_id:
+            typeof item.entityId === 'string'
+              ? item.entityId
+              : undefined,
+          details:
+            typeof metadata?.details === 'string'
+              ? metadata.details
+              : '',
+          timestamp:
+            typeof item.createdAt === 'string'
+              ? item.createdAt
+              : new Date().toISOString(),
+        };
+      }),
+    );
+
+    setRejectedRecords(
+      state.rejectedRecords.map((record) => {
+        const item = record as Record<string, unknown>;
+        const importRecord =
+          item.importRecord as Record<string, unknown> | null | undefined;
+        const sourceData =
+          importRecord?.sourceData as Record<string, unknown> | null | undefined;
+        const validationErrors = importRecord?.validationErrors;
+
+        return {
+          id: String(item.id),
+          batch_id:
+            typeof importRecord?.batchId === 'string'
+              ? importRecord.batchId
+              : '',
+          module: 'imports',
+          row_number:
+            typeof importRecord?.rowNumber === 'number'
+              ? importRecord.rowNumber
+              : 0,
+          record_reference:
+            typeof importRecord?.recordKey === 'string'
+              ? importRecord.recordKey
+              : String(item.id),
+          raw_data: Object.fromEntries(
+            Object.entries(sourceData ?? {}).map(([key, value]) => [
+              key,
+              String(value ?? ''),
+            ]),
+          ),
+          error_message:
+            Array.isArray(validationErrors) && validationErrors.length
+              ? String(validationErrors[0])
+              : String(item.rejectionReason ?? ''),
+          rejected_at:
+            typeof item.createdAt === 'string'
+              ? item.createdAt
+              : new Date().toISOString(),
+          status:
+            item.correctionStatus === 'resolved'
+              ? 'resolved'
+              : 'rejected',
+        };
+      }),
+    );
+
+    setImportBatches(
+      state.importBatches.map((batch) => {
+        const item = batch as Record<string, unknown>;
+        const metadata =
+          item.metadata as Record<string, unknown> | null | undefined;
+
+        return {
+          id: String(item.id),
+          batch_code:
+            typeof metadata?.batch_code === 'string'
+              ? metadata.batch_code
+              : String(item.id),
+          module_name: String(item.entityType ?? ''),
+          file_name: String(item.originalFilename ?? ''),
+          total_rows:
+            typeof item.totalRecords === 'number'
+              ? item.totalRecords
+              : 0,
+          passed_rows:
+            typeof item.acceptedRecords === 'number'
+              ? item.acceptedRecords
+              : 0,
+          failed_rows:
+            typeof item.rejectedRecords === 'number'
+              ? item.rejectedRecords
+              : 0,
+          warning_rows: 0,
+          uploaded_by: String(item.uploadedBy ?? ''),
+          uploaded_at:
+            typeof item.createdAt === 'string'
+              ? item.createdAt
+              : new Date().toISOString(),
+          status:
+            item.status === 'failed' ||
+            item.status === 'completed' ||
+            item.status === 'validated' ||
+            item.status === 'partially_accepted'
+              ? item.status
+              : 'uploaded',
+        };
+      }),
+    );
+
+    setEmployees(
+      state.employees.map((employee) => {
+        const item = employee as Record<string, unknown>;
+        const roleAssignments = Array.isArray(item.roles)
+          ? item.roles
+          : [];
+        const roleAssignment =
+          roleAssignments[0] as Record<string, unknown> | undefined;
+        const role =
+          roleAssignment?.role as Record<string, unknown> | undefined;
+        const allRoleIds = roleAssignments.map((assignment) => {
+          const assignedRole = (assignment as Record<string, unknown>).role as Record<string, unknown> | undefined;
+          return String(assignedRole?.id ?? '');
+        }).filter(Boolean);
+
+        return {
+          id: String(item.id),
+          employee_code: 'ADMIN',
+          full_name: String(item.displayName ?? ''),
+          email: String(item.email ?? ''),
+          phone: typeof item.phone === 'string' ? item.phone : '',
+          designation:
+            typeof item.customFields === 'object' &&
+            item.customFields !== null &&
+            typeof (item.customFields as Record<string, unknown>).designation ===
+              'string'
+              ? String(
+                  (item.customFields as Record<string, unknown>).designation,
+                )
+              : '',
+          role_id: String(role?.id ?? ''),
+          role_name: String(role?.name ?? 'Admin'),
+          role_ids: allRoleIds,
+          status:
+            item.status === 'suspended' ||
+            item.status === 'archived'
+              ? item.status
+              : 'active',
+          last_login_at:
+            typeof item.lastLoginAt === 'string'
+              ? item.lastLoginAt
+              : undefined,
+        };
+      }),
+    );
+
+    setRoles(
+      state.roles.map((role) => {
+        const item = role as Record<string, unknown>;
+        const permissions = Array.isArray(item.permissions)
+          ? item.permissions
+          : [];
+
+        const permissionMap: Record<string, UserPermission> = {};
+
+        for (const relation of permissions) {
+          const relationItem = relation as Record<string, unknown>;
+          const permission =
+            relationItem.permission as Record<string, unknown> | undefined;
+          if (!permission) continue;
+
+          permissionMap[String(permission.module)] = {
+            module: String(permission.module),
+            can_view: true,
+            can_create: String(permission.code).includes('create'),
+            can_edit: String(permission.code).includes('edit'),
+            can_import: String(permission.code).includes('import'),
+            can_archive: String(permission.code).includes('archive'),
+            can_delete: String(permission.code).includes('delete'),
+          };
+        }
+
+        return {
+          id: String(item.id),
+          role_name: String(item.name ?? ''),
+          description:
+            typeof item.description === 'string'
+              ? item.description
+              : '',
+          is_system_role: item.isSystemRole === true,
+          permissions: permissionMap,
+        };
+      }),
+    );
+  };
+
+  const persistAdminUiState = async (
+    overrides: Record<string, unknown> = {},
+  ) => {
+    await updateSettingsBundleApi({ uiState: {
+      settings,
+      socialLinks,
+      statistics,
+      milestones,
+      achievements,
+      ...overrides,
+    } });
   };
 
   const loginAdminUser = async (email: string, password: string) => {
@@ -558,6 +992,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         refreshMembersFromApi(),
         refreshEventsFromApi(),
         refreshPublicContentFromApi(),
+        refreshAdminPortalState(),
+        ...(user.isSystemRole || user.permissions?.includes('dashboard.read') ? [fetchDashboardApi().then(setDashboardData)] : []),
       ]);
     } finally {
       setAuthLoading(false);
@@ -567,7 +1003,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const logoutAdminUser = () => {
     clearAdminSession();
     setIsAuthenticated(false);
-    setCurrentUser(employees[0]);
+    setCurrentUser({ id: '', employee_code: '', full_name: '', email: '', phone: '', designation: '', role_id: '', role_name: '', status: 'active' });
     setIsAdminPortalOpen(false);
     void refreshPublicContentFromApi().catch((error) => {
       console.error('Public content refresh failed after logout:', error);
@@ -606,6 +1042,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             refreshMembersFromApi(),
             refreshEventsFromApi(),
             refreshPublicContentFromApi(),
+            refreshAdminPortalState(),
+            ...(user.isSystemRole || user.permissions?.includes('dashboard.read') ? [fetchDashboardApi().then(setDashboardData)] : []),
           ]);
         } catch (error) {
           if (!cancelled) {
@@ -643,40 +1081,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, []);
 
-  useEffect(() => saveStored('settings', settings), [settings]);
-  useEffect(() => saveStored('social_links', socialLinks), [socialLinks]);
-  useEffect(() => saveStored('statistics', statistics), [statistics]);
-  useEffect(
-    () => saveStored('sw_categories', socialWorkCategories),
-    [socialWorkCategories],
-  );
-  useEffect(
-    () => saveStored('sw_activities', socialWorkActivities),
-    [socialWorkActivities],
-  );
-  useEffect(
-    () => saveStored('announcements', announcements),
-    [announcements],
-  );
-  useEffect(() => saveStored('milestones', milestones), [milestones]);
-  useEffect(() => saveStored('achievements', achievements), [achievements]);
-  useEffect(
-    () => saveStored('contacts', contactSubmissions),
-    [contactSubmissions],
-  );
-  useEffect(
-    () => saveStored('notifications', notifications),
-    [notifications],
-  );
-  useEffect(() => saveStored('audit_logs', auditLogs), [auditLogs]);
-  useEffect(
-    () => saveStored('rejected_records', rejectedRecords),
-    [rejectedRecords],
-  );
-  useEffect(
-    () => saveStored('import_batches', importBatches),
-    [importBatches],
-  );
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setIsAuthenticated(false);
+      setIsAdminPortalOpen(true);
+    };
+    window.addEventListener('asrgh:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('asrgh:unauthorized', handleUnauthorized);
+  }, [setIsAdminPortalOpen]);
+
   useEffect(() => saveStored('text_size', textSize), [textSize]);
 
   const openLightbox = (
@@ -697,557 +1110,430 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setLightbox((prev) => ({ ...prev, isOpen: false }));
   };
 
-  const addAuditLog = (
-    action: string,
-    module: string,
-    details: string,
-    entityId?: string,
-  ) => {
-    const newLog: AuditLog = {
-      id: `log-${Date.now()}-${Math.random()
-        .toString(36)
-        .substr(2, 4)}`,
-      actor_name: currentUser.full_name,
-      actor_role: currentUser.role_name,
-      action,
-      module,
-      entity_id: entityId,
-      details,
-      timestamp: new Date().toLocaleString(),
-    };
 
-    setAuditLogs((prev) => [newLog, ...prev]);
-  };
-
-  const updateSettings = (
+  const updateSettings = async (
     newSettings: Partial<OrganizationSettings>,
   ) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
-    addAuditLog(
-      'SETTINGS_UPDATE',
-      'settings',
-      'Updated organization settings and contact info',
-    );
+    const nextSettings = { ...settings, ...newSettings };
+    await updateSettingsBundleApi({
+      organization: { name: nextSettings.organization_name, legalName: nextSettings.legal_name, email: nextSettings.primary_email, phone: nextSettings.primary_phone, addressLine1: nextSettings.address_line_1, addressLine2: nextSettings.address_line_2, city: nextSettings.city, state: nextSettings.state, postalCode: nextSettings.postal_code, country: nextSettings.country },
+      websiteSetting: { siteTitle: nextSettings.organization_name, tagline: nextSettings.tagline, contactEmail: nextSettings.primary_email, contactPhone: nextSettings.primary_phone, address: [nextSettings.address_line_1, nextSettings.address_line_2, nextSettings.city, nextSettings.state, nextSettings.postal_code, nextSettings.country].filter(Boolean).join(', '), socialLinks, publicSettings: { googleMapsUrl: nextSettings.google_maps_url, officeHours: nextSettings.office_hours, showPhone: nextSettings.show_phone, showEmail: nextSettings.show_email, showWhatsapp: nextSettings.show_whatsapp, showAddress: nextSettings.show_address, showOfficeHours: nextSettings.show_office_hours, showMap: nextSettings.show_map } },
+      uiState: { settings: nextSettings, socialLinks, statistics, milestones, achievements },
+    });
+    setSettings(nextSettings);
   };
 
-  const updateSocialLinks = (links: SocialLink[]) => {
+  const updateSocialLinks = async (links: SocialLink[]) => {
+    await persistAdminUiState({ socialLinks: links });
     setSocialLinks(links);
-    addAuditLog(
-      'SOCIAL_LINKS_UPDATE',
-      'settings',
-      'Updated social links configuration',
-    );
   };
 
-  const updateStatistic = (
+  const updateStatistic = async (
     id: string,
     overrideValue: number,
     isOverridden: boolean,
   ) => {
-    setStatistics((prev) =>
-      prev.map((s) =>
-        s.id === id
-          ? {
-              ...s,
-              value: overrideValue,
-              is_overridden: isOverridden,
-            }
-          : s,
-      ),
+    const nextStatistics = statistics.map((stat) =>
+      stat.id === id
+        ? {
+            ...stat,
+            value: overrideValue,
+            is_overridden: isOverridden,
+          }
+        : stat,
     );
 
-    addAuditLog(
-      'STATISTIC_OVERRIDE',
-      'statistics',
-      `Updated statistics metric value to ${overrideValue}`,
-    );
+    await persistAdminUiState({ statistics: nextStatistics });
+    setStatistics(nextStatistics);
   };
 
   const addMember = async (member: Member) => {
-    const saved = isAuthenticated
-      ? await createAdminMember(member)
-      : member;
+    const saved = await createAdminMember(member);
 
     setMembers((prev) => [
       saved,
       ...prev.filter((m) => m.id !== member.id),
     ]);
 
-    addAuditLog(
-      'MEMBER_CREATE',
-      'members',
-      `Created member record: ${saved.display_name} (${saved.member_code})`,
-      saved.id,
-    );
+    return saved;
+
   };
 
   const updateMember = async (
     id: string,
     updated: Partial<Member>,
   ) => {
-    const saved = isAuthenticated
-      ? await updateAdminMember(id, updated)
-      : ({
-          ...members.find((m) => m.id === id),
-          ...updated,
-        } as Member);
+    const saved = await updateAdminMember(id, updated);
 
     setMembers((prev) =>
       prev.map((m) => (m.id === id ? saved : m)),
     );
 
-    addAuditLog(
-      'MEMBER_UPDATE',
-      'members',
-      `Updated member: ${saved.display_name || id}`,
-      id,
-    );
   };
 
   const archiveMember = async (id: string) => {
-    const saved = isAuthenticated
-      ? await archiveAdminMember(id)
-      : ({
-          ...members.find((m) => m.id === id),
-          status: 'archived',
-        } as Member);
+    const saved = await archiveAdminMember(id);
 
     setMembers((prev) =>
       prev.map((m) => (m.id === id ? saved : m)),
     );
 
-    addAuditLog(
-      'MEMBER_ARCHIVE',
-      'members',
-      `Archived member record: ${id}`,
-      id,
-    );
   };
 
   const deleteMember = async (id: string) => {
-    if (isAuthenticated) {
-      await deleteAdminMember(id);
-    }
+    await deleteAdminMember(id);
 
     setMembers((prev) =>
       prev.filter((m) => m.id !== id),
     );
 
-    addAuditLog(
-      'MEMBER_DELETE',
-      'members',
-      `Deleted member record: ${id}`,
-      id,
-    );
-  };
-
-  const bulkAddMembers = (newMembers: Member[]) => {
-    setMembers((prev) => [...newMembers, ...prev]);
-
-    addAuditLog(
-      'MEMBER_BULK_IMPORT',
-      'members',
-      `Imported ${newMembers.length} member records via Excel validation engine.`,
-    );
   };
 
   const addEvent = async (event: Event) => {
-    const saved = isAuthenticated
-      ? await createAdminEvent(event)
-      : event;
+    const saved = await createAdminEvent(event);
 
     setEvents((prev) => [
       saved,
       ...prev.filter((e) => e.id !== event.id),
     ]);
 
-    addAuditLog(
-      'EVENT_CREATE',
-      'events',
-      `Created event: ${saved.title} (${saved.event_code})`,
-      saved.id,
-    );
   };
 
   const updateEvent = async (
     id: string,
     updated: Partial<Event>,
   ) => {
-    const saved = isAuthenticated
-      ? await updateAdminEvent(id, updated)
-      : ({
-          ...events.find((e) => e.id === id),
-          ...updated,
-        } as Event);
+    const saved = await updateAdminEvent(id, updated);
 
     setEvents((prev) =>
       prev.map((e) => (e.id === id ? saved : e)),
     );
 
-    addAuditLog(
-      'EVENT_UPDATE',
-      'events',
-      `Updated event: ${saved.title || id}`,
-      id,
-    );
   };
 
   const archiveEvent = async (id: string) => {
-    const saved = isAuthenticated
-      ? await archiveAdminEvent(id)
-      : ({
-          ...events.find((e) => e.id === id),
-          display_status: 'archived',
-        } as Event);
+    const saved = await archiveAdminEvent(id);
 
     setEvents((prev) =>
       prev.map((e) => (e.id === id ? saved : e)),
     );
 
-    addAuditLog(
-      'EVENT_ARCHIVE',
-      'events',
-      `Archived event: ${id}`,
-      id,
-    );
   };
 
   const deleteEvent = async (id: string) => {
+    await deleteAdminEvent(id);
+
     setEvents((prev) =>
       prev.filter((e) => e.id !== id),
     );
 
-    addAuditLog(
-      'EVENT_DELETE',
-      'events',
-      `Removed event from current view: ${id}`,
-      id,
-    );
   };
 
-  const bulkAddEvents = (newEvents: Event[]) => {
-    setEvents((prev) => [...newEvents, ...prev]);
-
-    addAuditLog(
-      'EVENT_BULK_IMPORT',
-      'events',
-      `Imported ${newEvents.length} event records via Excel validation engine.`,
-    );
-  };
-
-  const addEventPhoto = (
-    eventId: string,
-    photo: EventPhoto,
-  ) => {
-    setEvents((prev) =>
-      prev.map((e) =>
-        e.id === eventId
-          ? {
-              ...e,
-              photos: [photo, ...(e.photos || [])],
-            }
-          : e,
-      ),
-    );
-
-    addAuditLog(
-      'EVENT_PHOTO_UPLOAD',
-      'gallery',
-      `Uploaded new photo to event: ${eventId}`,
-      eventId,
-    );
-  };
-
-  const addEventPhotos = (
-    eventId: string,
-    photos: EventPhoto[],
-  ) => {
-    if (!photos.length) return;
-
-    setEvents((prev) =>
-      prev.map((e) =>
-        e.id === eventId
-          ? {
-              ...e,
-              photos: [...photos, ...(e.photos || [])].map(
-                (photo, index) => ({
-                  ...photo,
-                  display_order: index + 1,
-                }),
-              ),
-            }
-          : e,
-      ),
-    );
-
-    addAuditLog(
-      'EVENT_PHOTOS_UPLOAD',
-      'gallery',
-      `Uploaded ${photos.length} photo${
-        photos.length === 1 ? '' : 's'
-      } to event album: ${eventId}`,
-      eventId,
-    );
-  };
-
-  const addSocialWorkActivity = (
+  const addSocialWorkActivity = async (
     act: SocialWorkActivity,
   ) => {
-    setSocialWorkActivities((prev) => [act, ...prev]);
+    const created = await createSocialWorkActivityApi({
+      title: act.title,
+      slug: act.activity_code || act.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      categoryId: act.category_id || undefined,
+      summary: act.summary,
+      description: act.description,
+      startDate: act.start_date,
+      endDate: act.end_date,
+      status: act.status,
+      displayOrder: act.display_order,
+      publishedAt: act.published_at ? new Date(act.published_at).toISOString() : null,
+      coverMediaId: act.cover_media_id || null,
+      metadata: act.metadata,
+      customFields: {
+        ...(act.custom_fields ?? {}),
+        activity_code: act.activity_code,
+        type: act.type,
+        location: act.location,
+        featured: act.featured,
+        photos: act.photos,
+        beneficiaries_count: act.beneficiaries_count,
+      },
+    });
 
-    addAuditLog(
-      'SOCIAL_WORK_CREATE',
-      'social_work',
-      `Created activity: ${act.title} (${act.activity_code})`,
-      act.id,
-    );
+    const item = created as Record<string, unknown>;
+    const category = item.category as Record<string, unknown> | undefined;
+    const customFields = item.customFields as Record<string, unknown> | undefined;
+    const saved: SocialWorkActivity = {
+      ...act,
+      id: String(item.id),
+      activity_code:
+        typeof customFields?.activity_code === 'string'
+          ? customFields.activity_code
+          : act.activity_code,
+      category_name:
+        typeof category?.name === 'string'
+          ? category.name
+          : act.category_name,
+    };
+
+    setSocialWorkActivities((prev) => [saved, ...prev]);
   };
 
-  const updateSocialWorkActivity = (
+  const addSocialWorkCategory = async (category: Omit<SocialWorkCategory, 'id'>) => {
+    await createSocialWorkCategoryApi({ name: category.name, description: category.description, iconKey: category.icon_name, displayOrder: category.display_order, isActive: category.status === 'active' });
+    await refreshAdminPortalState();
+  };
+
+  const updateSocialWorkCategory = async (id: string, category: Partial<SocialWorkCategory>) => {
+    await updateSocialWorkCategoryApi(id, { name: category.name, description: category.description, iconKey: category.icon_name, displayOrder: category.display_order, isActive: category.status ? category.status === 'active' : undefined });
+    await refreshAdminPortalState();
+  };
+
+  const deleteSocialWorkCategory = async (id: string) => {
+    await deleteSocialWorkCategoryApi(id);
+    setSocialWorkCategories((prev) => prev.filter((category) => category.id !== id));
+  };
+
+  const updateSocialWorkActivity = async (
     id: string,
     updated: Partial<SocialWorkActivity>,
   ) => {
+    const current = socialWorkActivities.find((activity) => activity.id === id);
+    if (!current) return;
+
+    const merged = { ...current, ...updated };
+    const saved = await updateSocialWorkActivityApi(id, {
+      title: merged.title,
+      slug: merged.activity_code || merged.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      categoryId: merged.category_id || undefined,
+      summary: merged.summary,
+      description: merged.description,
+      startDate: merged.start_date,
+      endDate: merged.end_date,
+      status: merged.status,
+      displayOrder: merged.display_order,
+      publishedAt: merged.published_at ? new Date(merged.published_at).toISOString() : null,
+      coverMediaId: merged.cover_media_id || null,
+      metadata: merged.metadata,
+      customFields: {
+        ...(merged.custom_fields ?? {}),
+        activity_code: merged.activity_code,
+        type: merged.type,
+        location: merged.location,
+        featured: merged.featured,
+        photos: merged.photos,
+        beneficiaries_count: merged.beneficiaries_count,
+      },
+    });
+
     setSocialWorkActivities((prev) =>
-      prev.map((a) =>
-        a.id === id ? { ...a, ...updated } : a,
+      prev.map((activity) =>
+        activity.id === id ? merged : activity,
       ),
     );
 
-    addAuditLog(
-      'SOCIAL_WORK_UPDATE',
-      'social_work',
-      `Updated activity: ${updated.title || id}`,
-      id,
-    );
+
   };
 
-  const archiveSocialWorkActivity = (id: string) => {
+  const archiveSocialWorkActivity = async (id: string) => {
+    await archiveSocialWorkActivityApi(id);
     setSocialWorkActivities((prev) =>
-      prev.map((a) =>
-        a.id === id
-          ? { ...a, status: 'archived' }
-          : a,
+      prev.map((activity) =>
+        activity.id === id
+          ? { ...activity, status: 'archived' }
+          : activity,
       ),
     );
 
-    addAuditLog(
-      'SOCIAL_WORK_ARCHIVE',
-      'social_work',
-      `Archived activity: ${id}`,
-      id,
-    );
   };
 
-  const deleteSocialWorkActivity = (id: string) => {
+  const deleteSocialWorkActivity = async (id: string) => {
+    await deleteSocialWorkActivityApi(id);
     setSocialWorkActivities((prev) =>
-      prev.filter((a) => a.id !== id),
+      prev.filter((activity) => activity.id !== id),
     );
 
-    addAuditLog(
-      'SOCIAL_WORK_DELETE',
-      'social_work',
-      `Deleted activity: ${id}`,
-      id,
-    );
   };
 
-  const addAnnouncement = (ann: Announcement) => {
-    setAnnouncements((prev) => [ann, ...prev]);
+  const addAnnouncement = async (ann: Announcement) => {
+    const created = await createAnnouncementApi({
+      title: ann.title,
+      slug: ann.announcement_code || ann.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      body: ann.content,
+      summary: ann.summary,
+      status: ann.status,
+      publishedAt: ann.publish_date
+        ? new Date(ann.publish_date).toISOString()
+        : undefined,
+      expiresAt: ann.expiry_date
+        ? new Date(ann.expiry_date).toISOString()
+        : undefined,
+      coverMediaId: ann.cover_media_id || null,
+      metadata: ann.metadata,
+      customFields: {
+        ...(ann.custom_fields ?? {}),
+        announcement_code: ann.announcement_code,
+        important: ann.important,
+        featured: ann.featured,
+      },
+    });
 
-    addAuditLog(
-      'ANNOUNCEMENT_CREATE',
-      'announcements',
-      `Created announcement: ${ann.title} (${ann.announcement_code})`,
-      ann.id,
-    );
+    const item = created as Record<string, unknown>;
+    const saved: Announcement = {
+      ...ann,
+      id: String(item.id),
+    };
+
+    setAnnouncements((prev) => [saved, ...prev]);
   };
 
-  const updateAnnouncement = (
+  const updateAnnouncement = async (
     id: string,
     updated: Partial<Announcement>,
   ) => {
+    const current = announcements.find((announcement) => announcement.id === id);
+    if (!current) return;
+
+    const merged = { ...current, ...updated };
+    await updateAnnouncementApi(id, {
+      title: merged.title,
+      slug: merged.announcement_code,
+      body: merged.content,
+      summary: merged.summary,
+      status: merged.status,
+      publishedAt: merged.publish_date
+        ? new Date(merged.publish_date).toISOString()
+        : undefined,
+      expiresAt: merged.expiry_date
+        ? new Date(merged.expiry_date).toISOString()
+        : null,
+      coverMediaId: merged.cover_media_id || null,
+      metadata: merged.metadata,
+      customFields: {
+        ...(merged.custom_fields ?? {}),
+        announcement_code: merged.announcement_code,
+        important: merged.important,
+        featured: merged.featured,
+      },
+    });
+
     setAnnouncements((prev) =>
-      prev.map((a) =>
-        a.id === id ? { ...a, ...updated } : a,
+      prev.map((announcement) =>
+        announcement.id === id ? merged : announcement,
       ),
     );
 
-    addAuditLog(
-      'ANNOUNCEMENT_UPDATE',
-      'announcements',
-      `Updated announcement: ${updated.title || id}`,
-      id,
-    );
   };
 
-  const archiveAnnouncement = (id: string) => {
+  const archiveAnnouncement = async (id: string) => {
+    await archiveAnnouncementApi(id);
     setAnnouncements((prev) =>
-      prev.map((a) =>
-        a.id === id
-          ? { ...a, status: 'archived' }
-          : a,
+      prev.map((announcement) =>
+        announcement.id === id
+          ? { ...announcement, status: 'archived' }
+          : announcement,
       ),
     );
 
-    addAuditLog(
-      'ANNOUNCEMENT_ARCHIVE',
-      'announcements',
-      `Archived announcement: ${id}`,
-      id,
-    );
   };
 
-  const deleteAnnouncement = (id: string) => {
+  const deleteAnnouncement = async (id: string) => {
+    await deleteAnnouncementApi(id);
     setAnnouncements((prev) =>
-      prev.filter((a) => a.id !== id),
+      prev.filter((announcement) => announcement.id !== id),
     );
 
-    addAuditLog(
-      'ANNOUNCEMENT_DELETE',
-      'announcements',
-      `Deleted announcement: ${id}`,
-      id,
-    );
   };
 
-  const bulkAddAnnouncements = (
-    anns: Announcement[],
-  ) => {
-    setAnnouncements((prev) => [...anns, ...prev]);
-
-    addAuditLog(
-      'ANNOUNCEMENT_BULK_IMPORT',
-      'announcements',
-      `Imported ${anns.length} announcements.`,
-    );
-  };
-
-  const addMilestone = (m: Milestone) => {
-    setMilestones((prev) => [m, ...prev]);
-
-    addAuditLog(
-      'MILESTONE_CREATE',
-      'about',
-      `Created milestone: ${m.title}`,
-      m.id,
-    );
-  };
-
-  const addAchievement = (a: Achievement) => {
-    setAchievements((prev) => [a, ...prev]);
-
-    addAuditLog(
-      'ACHIEVEMENT_CREATE',
-      'about',
-      `Created achievement: ${a.title}`,
-      a.id,
-    );
-  };
-
-  const addContactSubmission = (
+  const addContactSubmission = async (
     sub: Omit<
       ContactSubmission,
       'id' | 'submission_code' | 'created_at' | 'status'
     >,
   ) => {
-    const code = `CON-2026-${String(
-      contactSubmissions.length + 1,
-    ).padStart(3, '0')}`;
-
-    const newSubmission: ContactSubmission = {
-      ...sub,
-      id: `con-${Date.now()}`,
-      submission_code: code,
-      status: 'new',
-      created_at: new Date().toLocaleString(),
-    };
-
-    setContactSubmissions((prev) => [
-      newSubmission,
-      ...prev,
-    ]);
-
-    addAuditLog(
-      'CONTACT_SUBMIT',
-      'contact',
-      `New public contact request submitted by ${sub.name}: "${sub.subject}"`,
-      newSubmission.id,
-    );
+    const created = await submitPublicContact(sub) as Record<string, unknown>;
+    return String(created.id);
   };
 
-  const updateContactStatus = (
+  const updateContactStatus = async (
     id: string,
     status: ContactSubmission['status'],
     assignedTo?: string,
     notes?: string,
   ) => {
+    const updated = await updateContactApi(id, {
+      status,
+      assignedTo: assignedTo || null,
+      notes,
+    });
+
+    const item = updated as Record<string, unknown>;
+    const assignee =
+      item.assignee as Record<string, unknown> | undefined;
+
     setContactSubmissions((prev) =>
-      prev.map((c) =>
-        c.id === id
+      prev.map((contact) =>
+        contact.id === id
           ? {
-              ...c,
+              ...contact,
               status,
+              assigned_to_employee_id: assignedTo,
               assigned_to_name:
-                assignedTo || c.assigned_to_name,
+                typeof assignee?.displayName === 'string'
+                  ? assignee.displayName
+                  : contact.assigned_to_name,
               admin_notes:
-                notes !== undefined
-                  ? notes
-                  : c.admin_notes,
+                notes !== undefined ? notes : contact.admin_notes,
               resolved_at:
-                status === 'resolved' ||
-                status === 'closed'
-                  ? new Date().toLocaleString()
-                  : c.resolved_at,
+                status === 'resolved' || status === 'closed'
+                  ? new Date().toISOString()
+                  : contact.resolved_at,
             }
-          : c,
+          : contact,
       ),
     );
 
-    addAuditLog(
-      'CONTACT_STATUS_UPDATE',
-      'contact',
-      `Updated contact #${id} status to ${status}`,
-      id,
-    );
   };
 
-  const sendNotification = (
+  const sendNotification = async (
     notif: Omit<
       NotificationRecord,
       'id' | 'sent_at' | 'sender_name' | 'targeted_devices'
     >,
   ) => {
+    const created = await createNotificationApi({
+      type: notif.destination_type,
+      title: notif.title,
+      message: notif.message,
+      linkUrl: notif.destination_id,
+    });
+
+    const item = created as Record<string, unknown>;
     const newNotif: NotificationRecord = {
       ...notif,
-      id: `notif-${Date.now()}`,
+      id: String(item.id),
       sender_name: currentUser.full_name,
-      sent_at: new Date().toLocaleString(),
-      targeted_devices: 2450,
+      sent_at:
+        typeof item.createdAt === 'string'
+          ? item.createdAt
+          : new Date().toISOString(),
+      targeted_devices: 0,
+      status: 'scheduled',
+      is_read: item.isRead === true,
     };
 
-    setNotifications((prev) => [
-      newNotif,
-      ...prev,
-    ]);
+    setNotifications((prev) => [newNotif, ...prev]);
 
-    addAuditLog(
-      'NOTIFICATION_SENT',
-      'notifications',
-      `Broadcast push notification to 2,450 devices: "${notif.title}"`,
-      newNotif.id,
-    );
   };
 
-  const addRejectedRecords = (
-    records: RejectedRecord[],
-  ) => {
-    setRejectedRecords((prev) => [
-      ...records,
-      ...prev,
-    ]);
+  const updateNotification = async (id: string, data: Partial<NotificationRecord>) => {
+    await updateNotificationApi(id, { title: data.title, message: data.message, isRead: data.is_read });
+    setNotifications((prev) => prev.map((item) => item.id === id ? { ...item, ...data } : item));
   };
 
-  const resolveRejectedRecord = (id: string) => {
+  const deleteNotification = async (id: string) => {
+    await deleteNotificationApi(id);
+    setNotifications((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const resolveRejectedRecord = async (id: string) => {
+    await resolveRejectedRecordApi(id);
     setRejectedRecords((prev) =>
       prev.map((r) =>
         r.id === id
@@ -1256,45 +1542,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       ),
     );
 
-    addAuditLog(
-      'REJECTION_RESOLVED',
-      'imports',
-      `Marked rejected record #${id} as resolved.`,
-      id,
-    );
   };
 
-  const addImportBatch = (batch: ImportBatch) => {
-    setImportBatches((prev) => [
-      batch,
-      ...prev,
-    ]);
+  const commitImport = async (entityType: 'members' | 'events' | 'social_work' | 'announcements', filename: string, rows: Record<string, string>[]) => {
+    const result = await commitImportApi(entityType, filename, rows);
+    await Promise.all([refreshMembersFromApi(), refreshEventsFromApi(), refreshAdminPortalState()]);
+    return result;
   };
 
-  const resetAllDataToDefault = () => {
-    setSettings(INITIAL_SETTINGS);
-    setSocialLinks(INITIAL_SOCIAL_LINKS);
-    setStatistics(INITIAL_STATISTICS);
-    setMembers(INITIAL_MEMBERS);
-    setSocialWorkCategories(
-      INITIAL_SOCIAL_WORK_CATEGORIES,
-    );
-    setSocialWorkActivities(
-      INITIAL_SOCIAL_WORK_ACTIVITIES,
-    );
-    setEvents(INITIAL_EVENTS);
-    setAnnouncements(INITIAL_ANNOUNCEMENTS);
-    setMilestones(INITIAL_MILESTONES);
-    setAchievements(INITIAL_ACHIEVEMENTS);
-    setContactSubmissions(
-      INITIAL_CONTACT_SUBMISSIONS,
-    );
-    setNotifications([]);
-    setAuditLogs(INITIAL_AUDIT_LOGS);
-    setRejectedRecords([]);
-    setImportBatches([]);
-    localStorage.clear();
+  const updateAdminUser = async (id: string, data: { status?: string; roleIds?: string[] }) => {
+    await updateAdminUserApi(id, data);
+    await refreshAdminPortalState();
   };
+
+  const hasPermission = (permission: string) => Boolean(currentUser.is_system_role || currentUser.permission_codes?.includes(permission));
 
   return (
     <AppContext.Provider
@@ -1318,6 +1579,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         socialLinks,
         updateSocialLinks,
         statistics,
+        dashboardData,
         updateStatistic,
 
         members,
@@ -1326,7 +1588,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         updateMember,
         archiveMember,
         deleteMember,
-        bulkAddMembers,
 
         events,
         publicEvents,
@@ -1335,11 +1596,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         updateEvent,
         archiveEvent,
         deleteEvent,
-        bulkAddEvents,
-        addEventPhoto,
-        addEventPhotos,
 
         socialWorkCategories,
+        addSocialWorkCategory,
+        updateSocialWorkCategory,
+        deleteSocialWorkCategory,
         socialWorkActivities,
         addSocialWorkActivity,
         updateSocialWorkActivity,
@@ -1351,12 +1612,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         updateAnnouncement,
         archiveAnnouncement,
         deleteAnnouncement,
-        bulkAddAnnouncements,
 
         milestones,
         achievements,
-        addMilestone,
-        addAchievement,
 
         contactSubmissions,
         addContactSubmission,
@@ -1364,16 +1622,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
         notifications,
         sendNotification,
+        updateNotification,
+        deleteNotification,
 
         auditLogs,
-        addAuditLog,
 
         rejectedRecords,
-        addRejectedRecords,
         resolveRejectedRecord,
 
         importBatches,
-        addImportBatch,
+        commitImport,
 
         isAuthenticated,
         authLoading,
@@ -1387,9 +1645,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         setCurrentUser,
         employees,
         roles,
+        updateAdminUser,
+        hasPermission,
         activeAdminTab,
         setActiveAdminTab,
-        resetAllDataToDefault,
       }}
     >
       {children}

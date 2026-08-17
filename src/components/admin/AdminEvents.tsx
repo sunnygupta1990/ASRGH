@@ -23,6 +23,7 @@ import {
   setAdminEventCoverPhoto,
   updateAdminEventPhotoCaption,
   uploadAdminEventPhotos,
+  reorderAdminEventPhotos,
 } from '../../api/events';
 import { Event } from '../../types';
 import { downloadTemplate } from '../../utils/excelEngine';
@@ -53,6 +54,7 @@ export const AdminEvents: React.FC<{
   const [formData, setFormData] = useState<Partial<Event>>({
     event_code: '',
     title: '',
+    summary: '',
     description: '',
     category: 'Cultural',
     event_date: new Date().toISOString().split('T')[0],
@@ -110,6 +112,7 @@ export const AdminEvents: React.FC<{
     setFormData({
       event_code: nextCode,
       title: '',
+      summary: '',
       description: '',
       category: 'Cultural Program',
       event_date: new Date().toISOString().split('T')[0],
@@ -151,6 +154,7 @@ export const AdminEvents: React.FC<{
           id: `evt-${Date.now()}`,
           event_code: formData.event_code || `EVT-${Date.now()}`,
           title: formData.title || '',
+          summary: formData.summary,
           description: formData.description || '',
           social_work_activity_id: formData.social_work_activity_id,
           social_work_activity_title: formData.social_work_activity_title,
@@ -167,6 +171,9 @@ export const AdminEvents: React.FC<{
           countdown_enabled: formData.countdown_enabled || false,
           display_status: formData.display_status || 'active',
           photos: [],
+          published_at: formData.published_at,
+          metadata: formData.metadata,
+          custom_fields: formData.custom_fields,
         };
 
         await addEvent(newEvent);
@@ -294,6 +301,24 @@ export const AdminEvents: React.FC<{
           ? error.message
           : 'Unable to delete photo.',
       );
+    } finally {
+      setBusyPhotoId(null);
+    }
+  };
+
+  const handleMovePhoto = async (photoId: string, offset: number) => {
+    if (!photoManagingEvent?.album_code) return;
+    const ids = photoManagingEvent.photos.map((photo) => photo.id);
+    const index = ids.indexOf(photoId);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= ids.length) return;
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    setBusyPhotoId(photoId);
+    try {
+      await reorderAdminEventPhotos(photoManagingEvent.album_code, ids);
+      await reloadPhotoManagingEvent(photoManagingEvent.id);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to reorder photos.');
     } finally {
       setBusyPhotoId(null);
     }
@@ -483,7 +508,7 @@ export const AdminEvents: React.FC<{
                                 `Remove "${event.title}" from the current event list?`,
                               )
                             ) {
-                              void deleteEvent(event.id);
+                              void deleteEvent(event.id).catch((error) => alert(error instanceof Error ? error.message : 'Unable to delete event.'));
                             }
                           }}
                           title="Remove Event"
@@ -595,6 +620,8 @@ export const AdminEvents: React.FC<{
                 />
               </div>
 
+              <div><label className="block font-bold text-slate-700 mb-1">Summary</label><textarea rows={2} value={formData.summary || ''} onChange={(event) => setFormData({ ...formData, summary: event.target.value })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800" /></div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
@@ -648,6 +675,8 @@ export const AdminEvents: React.FC<{
                   />
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className="block font-bold text-slate-700 mb-1">Published Date</label><input type="date" value={formData.published_at?.slice(0,10) || ''} onChange={(event) => setFormData({ ...formData, published_at: event.target.value })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl" /></div><div><label className="block font-bold text-slate-700 mb-1">Metadata JSON</label><textarea key={selectedEvent?.id ?? 'new'} defaultValue={JSON.stringify(formData.metadata ?? {}, null, 2)} onBlur={(event) => { try { setFormData({ ...formData, metadata: JSON.parse(event.target.value) }); } catch { alert('Metadata must be valid JSON.'); } }} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono" /></div></div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -869,7 +898,7 @@ export const AdminEvents: React.FC<{
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
-                {(photoManagingEvent.photos || []).map((photo) => {
+                {(photoManagingEvent.photos || []).map((photo, photoIndex) => {
                   const isBusy = busyPhotoId === photo.id;
                   const draftCaption =
                     captionDrafts[photo.id] ?? photo.caption ?? '';
@@ -952,6 +981,10 @@ export const AdminEvents: React.FC<{
                             <Trash2 className="w-3 h-3" />
                             Delete
                           </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button onClick={() => void handleMovePhoto(photo.id, -1)} disabled={isBusy || photoIndex === 0} className="px-2 py-1.5 bg-slate-100 rounded-lg text-[10px] font-bold disabled:opacity-40">Move earlier</button>
+                          <button onClick={() => void handleMovePhoto(photo.id, 1)} disabled={isBusy || photoIndex === photoManagingEvent.photos.length - 1} className="px-2 py-1.5 bg-slate-100 rounded-lg text-[10px] font-bold disabled:opacity-40">Move later</button>
                         </div>
                       </div>
                     </div>
