@@ -17,7 +17,20 @@ import {
 import { useApp } from '../../context/AppContext';
 import { Member } from '../../types';
 import { downloadTemplate } from '../../utils/excelEngine';
-import { createManagementAssignmentApi, createManagementPositionApi, createManagementTermApi, deleteManagementAssignmentApi, deleteManagementPositionApi, deleteManagementTermApi, fetchManagementApi, updateManagementAssignmentApi, updateManagementPositionApi, updateManagementTermApi } from '../../api/adminPortal';
+import { prepareProfilePhoto, profilePhotoPreviewUrl } from '../../utils/profilePhoto';
+import {
+  createManagementAssignmentApi,
+  createManagementPositionApi,
+  createManagementTermApi,
+  deleteManagementAssignmentApi,
+  deleteManagementPositionApi,
+  deleteManagementTermApi,
+  fetchManagementApi,
+  updateManagementAssignmentApi,
+  updateManagementPositionApi,
+  updateManagementTermApi,
+} from '../../api/adminPortal';
+import { deleteMemberProfilePhoto, uploadMemberProfilePhoto } from '../../api/members';
 
 export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
   const { members, addMember, updateMember, deleteMember, archiveMember, refreshMembersFromApi } = useApp();
@@ -34,6 +47,9 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
   const [termId, setTermId] = useState('');
   const [assignManagement, setAssignManagement] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
+  const [removeProfilePhoto, setRemoveProfilePhoto] = useState(false);
   const [newPosition, setNewPosition] = useState({ code: '', name: '' });
   const [newTerm, setNewTerm] = useState({ name: '', startDate: '', endDate: '' });
   const reloadManagement = async () => { const data = await fetchManagementApi(); setManagement(data as typeof management); };
@@ -88,6 +104,31 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
     });
   }, [members, search, categoryFilter, managementFilter]);
 
+  const resetProfilePhotoState = () => {
+    if (profilePhotoPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(profilePhotoPreview);
+    }
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview(null);
+    setRemoveProfilePhoto(false);
+  };
+
+  const handleProfilePhotoChange = async (file: File | undefined) => {
+    if (!file) return;
+
+    try {
+      const prepared = await prepareProfilePhoto(file);
+      if (profilePhotoPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(profilePhotoPreview);
+      }
+      setProfilePhotoFile(prepared);
+      setProfilePhotoPreview(profilePhotoPreviewUrl(prepared));
+      setRemoveProfilePhoto(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to process profile photo');
+    }
+  };
+
   const handleOpenAdd = () => {
     const nextCode = `MEM-${String(members.length + 1).padStart(4, '0')}`;
     setFormData({
@@ -115,9 +156,10 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
       },
       status: 'active',
       joined_date: new Date().toISOString().split('T')[0],
-      photo_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=600',
+      photo_url: undefined,
     });
     setSelectedMember(null);
+    resetProfilePhotoState();
     setAssignmentId('');
     setPositionId('');
     setTermId('');
@@ -128,6 +170,9 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
   const handleOpenEdit = (m: Member) => {
     setSelectedMember(m);
     setFormData({ ...m });
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview(m.photo_url ?? null);
+    setRemoveProfilePhoto(false);
     const assignment = m.management_assignments?.[0];
     setAssignmentId(assignment?.id ?? '');
     setPositionId(assignment?.position_id ?? '');
@@ -174,6 +219,12 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
         } as Member);
         savedMemberId = saved.id;
       }
+      if (profilePhotoFile) {
+        await uploadMemberProfilePhoto(savedMemberId, profilePhotoFile);
+      } else if (removeProfilePhoto && selectedMember) {
+        await deleteMemberProfilePhoto(savedMemberId);
+      }
+
       if (assignManagement) {
         if (!positionId || !termId) {
           throw new Error('Select both a management position and a management term, or turn off management assignment.');
@@ -197,6 +248,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
       }
       await reloadManagement();
       await refreshMembersFromApi();
+      resetProfilePhotoState();
       setIsEditing(false);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Unable to save member');
@@ -430,7 +482,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
               <h3 className="font-bold text-slate-900 text-base">
                 {selectedMember ? 'Edit Member Record' : 'Add New Member'}
               </h3>
-              <button onClick={() => setIsEditing(false)} className="p-1 text-slate-400 hover:text-slate-700">
+              <button onClick={() => { resetProfilePhotoState(); setIsEditing(false); }} className="p-1 text-slate-400 hover:text-slate-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -530,15 +582,62 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                   />
                 </div>
+
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Photo URL</label>
-                  <input
-                    type="text"
-                    value={formData.photo_url || ''}
-                    onChange={(e) => setFormData({ ...formData, photo_url: e.target.value })}
-                    placeholder="https://..."
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px]"
-                  />
+                  <label className="block font-bold text-slate-700 mb-1">Profile Photo</label>
+                  <div className="flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-200 border border-slate-200 shrink-0">
+                      {profilePhotoPreview ? (
+                        <img
+                          src={profilePhotoPreview}
+                          alt="Profile preview"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400 text-[10px]">
+                          No photo
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-lg font-semibold cursor-pointer hover:bg-slate-100">
+                        <Upload className="w-3.5 h-3.5" />
+                        {profilePhotoPreview ? 'Change Photo' : 'Upload Photo'}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="sr-only"
+                          onChange={(event) => {
+                            void handleProfilePhotoChange(event.target.files?.[0]);
+                            event.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                      {profilePhotoPreview && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (profilePhotoFile) {
+                              if (profilePhotoPreview.startsWith('blob:')) {
+                                URL.revokeObjectURL(profilePhotoPreview);
+                              }
+                              setProfilePhotoFile(null);
+                              setProfilePhotoPreview(selectedMember?.photo_url ?? null);
+                            } else {
+                              setProfilePhotoPreview(null);
+                              setRemoveProfilePhoto(true);
+                            }
+                          }}
+                          className="ml-2 text-rose-600 font-semibold hover:underline"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        JPG, PNG or WebP · max 2 MB · saved as 512×512 WebP
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 

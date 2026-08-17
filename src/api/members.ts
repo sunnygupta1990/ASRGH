@@ -1,6 +1,7 @@
 import { Member } from '../types';
 import { apiRequest } from './client';
 import { getCustomField } from './customFields';
+import { API_BASE_URL } from './config';
 
 interface BackendMember {
   id: string;
@@ -23,6 +24,7 @@ interface BackendMember {
   joinedOn?: string | null;
   notes?: string | null;
   profileMediaId?: string | null;
+  profileMedia?: { storageKey: string; isPublic?: boolean; deletedAt?: string | null } | null;
   metadata?: Record<string, unknown> | null;
   customFields?: Record<string, unknown> | null;
   assignments?: Array<{ id: string; memberId: string; positionId: string; termId: string; startDate?: string | null; endDate?: string | null; displayOrder: number; notes?: string | null; customFields?: Record<string, unknown>; position: { id: string; code: string; name: string; displayOrder: number; description?: string | null; isActive: boolean; customFields?: Record<string, unknown> }; term: { id: string; name: string; startDate: string; endDate?: string | null; status: string; notes?: string | null; customFields?: Record<string, unknown> } }>;
@@ -38,6 +40,12 @@ interface MemberResponse {
   data: BackendMember;
 }
 
+
+function mediaUrl(storageKey?: string | null): string | undefined {
+  if (!storageKey) return undefined;
+  if (storageKey.startsWith('http://') || storageKey.startsWith('https://')) return storageKey;
+  return `${API_BASE_URL.replace(/\/$/, '')}/${storageKey.replace(/^\//, '')}`;
+}
 
 export function mapBackendMember(member: BackendMember): Member {
   const visibility = getCustomField(member, 'visibility', {
@@ -61,7 +69,10 @@ export function mapBackendMember(member: BackendMember): Member {
     date_of_birth: member.dateOfBirth?.slice(0, 10),
     category: getCustomField(member, 'category', 'General'),
     designation: getCustomField(member, 'designation', 'Community Member'),
-    photo_url: getCustomField<string | undefined>(member, 'photo_url', undefined),
+    photo_url: mediaUrl(
+      member.profileMedia?.storageKey ??
+        getCustomField<string | undefined>(member, 'photo_url', undefined),
+    ),
     phone: member.phone ?? '',
     email: member.email ?? '',
     address: member.addressLine1 ?? '',
@@ -95,6 +106,8 @@ export function mapBackendMember(member: BackendMember): Member {
 }
 
 function toBackendMember(member: Partial<Member>) {
+  const { photo_url: _legacyPhotoUrl, ...customFields } = member.custom_fields ?? {};
+
   return {
     memberCode: member.member_code,
     firstName: member.first_name,
@@ -114,13 +127,11 @@ function toBackendMember(member: Partial<Member>) {
     membershipStatus: member.status,
     joinedOn: member.joined_date,
     notes: member.notes ?? member.bio,
-    profileMediaId: member.profile_media_id || null,
     metadata: member.metadata,
     customFields: {
-      ...(member.custom_fields ?? {}),
+      ...customFields,
       category: member.category,
       designation: member.designation,
-      photo_url: member.photo_url,
       display_order: member.display_order,
       visibility: member.visibility,
       bio: member.bio,
@@ -173,4 +184,27 @@ export async function deleteAdminMember(id: string): Promise<void> {
   await apiRequest<{ success: true }>(`/api/members/${id}`, {
     method: 'DELETE',
   });
+}
+
+
+export async function uploadMemberProfilePhoto(
+  memberId: string,
+  file: File,
+): Promise<void> {
+  const formData = new FormData();
+  formData.append('profilePhoto', file, file.name);
+
+  await apiRequest(`/api/members/${memberId}/profile-photo`, {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function deleteMemberProfilePhoto(
+  memberId: string,
+): Promise<void> {
+  await apiRequest<{ success: true }>(
+    `/api/members/${memberId}/profile-photo`,
+    { method: 'DELETE' },
+  );
 }
