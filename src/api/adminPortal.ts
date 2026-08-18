@@ -230,3 +230,116 @@ export async function fetchDashboardApi(): Promise<DashboardData> {
 export async function updateSettingsBundleApi(data: { organization?: Record<string, unknown>; uiState?: Record<string, unknown>; websiteSetting?: Record<string, unknown> }): Promise<void> {
   await apiRequest('/api/admin/operations/settings', { method: 'PUT', body: JSON.stringify(data) });
 }
+
+
+export interface StaffAccess {
+  members: boolean;
+  events: boolean;
+  circular: boolean;
+  helpdesk: boolean;
+  notifications: boolean;
+  socialWelfare: boolean;
+}
+
+export interface StaffRecord {
+  id: string;
+  employeeId: string;
+  displayName: string;
+  email: string;
+  phone?: string | null;
+  dateOfBirth?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  designation?: string | null;
+  status: 'active' | 'blocked' | 'suspended' | 'archived';
+  failedLoginAttempts: number;
+  lastFailedLoginAt?: string | null;
+  blockedAt?: string | null;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  role?: { id: string; code: string; name: string } | null;
+  permissions: string[];
+  access: StaffAccess;
+}
+
+export interface StaffInput {
+  employeeId: string;
+  displayName: string;
+  email: string;
+  password?: string;
+  dateOfBirth?: string | null;
+  phone?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  designation?: string | null;
+  status?: 'active' | 'suspended';
+  access: StaffAccess;
+}
+
+export async function fetchStaffApi(): Promise<StaffRecord[]> {
+  const response = await apiRequest<{ success: true; data: StaffRecord[] }>(
+    '/api/admin/staff',
+  );
+  return response.data;
+}
+
+export async function createStaffApi(data: StaffInput): Promise<StaffRecord> {
+  const response = await apiRequest<{ success: true; data: StaffRecord }>(
+    '/api/admin/staff',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+  );
+  return response.data;
+}
+
+export async function updateStaffApi(
+  id: string,
+  data: Partial<StaffInput>,
+): Promise<StaffRecord> {
+  const response = await apiRequest<{ success: true; data: StaffRecord }>(
+    `/api/admin/staff/${id}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    },
+  );
+  return response.data;
+}
+
+export async function releaseStaffApi(id: string): Promise<StaffRecord> {
+  const response = await apiRequest<{ success: true; data: StaffRecord }>(
+    `/api/admin/staff/${id}/release`,
+    {
+      method: 'POST',
+    },
+  );
+  return response.data;
+}
+
+export async function resetStaffPasswordApi(
+  id: string,
+  password: string,
+): Promise<StaffRecord> {
+  const response = await apiRequest<{ success: true; data: StaffRecord }>(
+    `/api/admin/staff/${id}/reset-password`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    },
+  );
+  return response.data;
+}
+
+export async function deleteStaffApi(id: string): Promise<void> {
+  await apiRequest(`/api/admin/staff/${id}`, {
+    method: 'DELETE',
+  });
+}

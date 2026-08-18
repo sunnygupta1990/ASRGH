@@ -247,7 +247,7 @@ function mapAuthUserToEmployee(
     designation: '',
     ...(fallback ?? {}),
     id: user.id,
-    employee_code: 'ADMIN',
+    employee_code: user.employeeId ?? 'ADMIN',
     full_name: user.displayName,
     email: user.email,
     role_id: user.roleId ?? '',
@@ -898,27 +898,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
         return {
           id: String(item.id),
-          employee_code: 'ADMIN',
+          employee_code:
+            typeof item.employeeId === 'string'
+              ? item.employeeId
+              : 'ADMIN',
           full_name: String(item.displayName ?? ''),
           email: String(item.email ?? ''),
           phone: typeof item.phone === 'string' ? item.phone : '',
           designation:
-            typeof item.customFields === 'object' &&
-            item.customFields !== null &&
-            typeof (item.customFields as Record<string, unknown>).designation ===
-              'string'
-              ? String(
-                  (item.customFields as Record<string, unknown>).designation,
-                )
-              : '',
+            typeof item.designation === 'string'
+              ? item.designation
+              : typeof item.customFields === 'object' &&
+                  item.customFields !== null &&
+                  typeof (item.customFields as Record<string, unknown>).designation ===
+                    'string'
+                ? String(
+                    (item.customFields as Record<string, unknown>).designation,
+                  )
+                : '',
           role_id: String(role?.id ?? ''),
           role_name: String(role?.name ?? 'Admin'),
           role_ids: allRoleIds,
           status:
-            item.status === 'suspended' ||
-            item.status === 'archived'
-              ? item.status
-              : 'active',
+            item.status === 'blocked'
+              ? 'blocked'
+              : item.status === 'suspended' ||
+                  item.status === 'archived'
+                ? item.status
+                : 'active',
+          date_of_birth:
+            typeof item.dateOfBirth === 'string'
+              ? item.dateOfBirth.slice(0, 10)
+              : undefined,
+          address_line_1:
+            typeof item.addressLine1 === 'string'
+              ? item.addressLine1
+              : undefined,
+          address_line_2:
+            typeof item.addressLine2 === 'string'
+              ? item.addressLine2
+              : undefined,
+          city:
+            typeof item.city === 'string' ? item.city : undefined,
+          state:
+            typeof item.state === 'string' ? item.state : undefined,
+          country:
+            typeof item.country === 'string' ? item.country : undefined,
+          failed_login_attempts:
+            typeof item.failedLoginAttempts === 'number'
+              ? item.failedLoginAttempts
+              : undefined,
+          last_failed_login_at:
+            typeof item.lastFailedLoginAt === 'string'
+              ? item.lastFailedLoginAt
+              : undefined,
+          blocked_at:
+            typeof item.blockedAt === 'string'
+              ? item.blockedAt
+              : undefined,
           last_login_at:
             typeof item.lastLoginAt === 'string'
               ? item.lastLoginAt

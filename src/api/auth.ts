@@ -2,6 +2,7 @@ import { apiRequest } from './client';
 
 export interface AuthUser {
   id: string;
+  employeeId?: string | null;
   email: string;
   displayName: string;
   status?: string;
@@ -24,10 +25,10 @@ interface MeResponse {
   user: AuthUser;
 }
 
-export async function loginAdmin(email: string, password: string): Promise<AuthUser> {
+export async function loginAdmin(identifier: string, password: string): Promise<AuthUser> {
   const response = await apiRequest<LoginResponse>('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ identifier, password }),
   });
 
   localStorage.setItem('asrgh_admin_token', response.token);

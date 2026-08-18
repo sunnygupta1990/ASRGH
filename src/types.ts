@@ -276,8 +276,17 @@ export interface Employee {
   designation: string;
   role_id: string;
   role_name: string;
-  status: EmployeeStatus;
+  status: EmployeeStatus | 'blocked';
   last_login_at?: string;
+  date_of_birth?: string;
+  address_line_1?: string;
+  address_line_2?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  failed_login_attempts?: number;
+  last_failed_login_at?: string;
+  blocked_at?: string;
   permission_overrides?: Record<string, Partial<UserPermission>>;
   role_ids?: string[];
   permission_codes?: string[];

@@ -9,7 +9,7 @@ export const AdminLoginPanel: React.FC = () => {
     setIsAdminPortalOpen,
   } = useApp();
 
-  const [email, setEmail] = useState('admin@asrgh.com');
+  const [identifier, setIdentifier] = useState('admin@asrgh.com');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
@@ -18,7 +18,7 @@ export const AdminLoginPanel: React.FC = () => {
     setError('');
 
     try {
-      await loginAdminUser(email, password);
+      await loginAdminUser(identifier, password);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : 'Unable to sign in',
@@ -54,16 +54,16 @@ export const AdminLoginPanel: React.FC = () => {
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5">
-              Email address
+              Employee ID / Email
             </label>
             <input
-              type="email"
+              type="text"
               required
               autoComplete="username"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
               className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-900 outline-none text-sm"
-              placeholder="admin@asrgh.com"
+              placeholder="Employee ID or admin@asrgh.com"
             />
           </div>
 

@@ -30,6 +30,7 @@ import { AdminNotifications } from './AdminNotifications';
 import { AdminImportExport } from './AdminImportExport';
 import { AdminSettings } from './AdminSettings';
 import { AdminAuditLogs } from './AdminAuditLogs';
+import { AdminStaff } from './AdminStaff';
 import { AdminLoginPanel } from './AdminLoginPanel';
 
 export const AdminPortalModal: React.FC = () => {
@@ -63,6 +64,7 @@ export const AdminPortalModal: React.FC = () => {
     { id: 'import', label: 'Excel Import Engine', icon: UploadCloud, permission: 'import_export.manage' },
     { id: 'settings', label: 'Portal & Org Settings', icon: Settings, permission: 'settings.read' },
     { id: 'audit', label: 'Security & Audit Logs', icon: ShieldCheck, permission: 'audit.read' },
+    { id: 'staff', label: 'Staff Management', icon: Users, permission: 'admin_users.read' },
   ].filter((item) => hasPermission(item.permission));
 
   const renderActiveTabContent = () => {
@@ -89,6 +91,8 @@ export const AdminPortalModal: React.FC = () => {
         return <AdminSettings />;
       case 'audit':
         return <AdminAuditLogs />;
+      case 'staff':
+        return <AdminStaff />;
       default:
         return <AdminDashboard onNavigateTab={setActiveAdminTab} />;
     }
