@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { ImportantAnnouncementBanner } from './components/public/ImportantAnnouncementBanner';
 import { Header } from './components/public/Header';
@@ -20,9 +20,15 @@ import { ContactPage } from './pages/ContactPage';
 
 // Admin Portal
 import { AdminPortalModal } from './components/admin/AdminPortalModal';
+import { applyTextScale } from './utils/accessibility';
+import { membersDirectoryCopy } from './utils/membersDirectory';
 
 const AppContent: React.FC = () => {
-  const { activePage, textSize, publicContentError } = useApp();
+  const { activePage, textSize, language, publicContentError } = useApp();
+
+  useEffect(() => {
+    applyTextScale(document.documentElement, textSize);
+  }, [textSize]);
 
   const renderActivePage = () => {
     switch (activePage) {
@@ -49,15 +55,8 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const textScaleClass =
-    textSize === 'large'
-      ? 'text-lg leading-relaxed'
-      : textSize === 'xlarge'
-      ? 'text-xl leading-loose'
-      : 'text-base';
-
   return (
-    <div className={`min-h-screen flex flex-col bg-slate-50 text-slate-900 ${textScaleClass} font-sans selection:bg-amber-400 selection:text-slate-950`}>
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-amber-400 selection:text-slate-950">
       {/* 1. Flash Announcement Bar */}
       <ImportantAnnouncementBanner />
 
@@ -71,7 +70,7 @@ const AppContent: React.FC = () => {
             role="alert"
             className="border-b border-red-200 bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-800"
           >
-            Unable to load public events and members: {publicContentError}
+            {membersDirectoryCopy(language).loadError}: {publicContentError}
           </div>
         )}
         {renderActivePage()}

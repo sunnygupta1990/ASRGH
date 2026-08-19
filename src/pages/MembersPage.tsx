@@ -16,9 +16,11 @@ import {
 import { useApp } from '../context/AppContext';
 import { Member, MemberCategory } from '../types';
 import { compareMembersByCode, filterMembersByCategory, MEMBER_CATEGORIES } from '../utils/memberClassification';
+import { matchesPublicMemberSearch, memberCategoryLabel, membersDirectoryCopy } from '../utils/membersDirectory';
 
 export const MembersPage: React.FC = () => {
-  const { publicMembers, selectedEntityId, setSelectedEntityId } = useApp();
+  const { publicMembers, selectedEntityId, setSelectedEntityId, language } = useApp();
+  const text = membersDirectoryCopy(language);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -50,18 +52,7 @@ export const MembersPage: React.FC = () => {
       .filter((m) => m.status === 'active')
       .filter((m) => {
         // Search Filter
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase().trim();
-          const match =
-            m.display_name.toLowerCase().includes(q) ||
-            m.first_name.toLowerCase().includes(q) ||
-            m.last_name.toLowerCase().includes(q) ||
-            m.designation.toLowerCase().includes(q) ||
-            m.category.toLowerCase().includes(q) ||
-            (m.native_place && m.native_place.toLowerCase().includes(q)) ||
-            (m.management_post && m.management_post.toLowerCase().includes(q));
-          if (!match) return false;
-        }
+        if (!matchesPublicMemberSearch(m, searchQuery)) return false;
 
         // Alphabet Filter
         if (selectedLetter !== 'all') {
@@ -90,13 +81,13 @@ export const MembersPage: React.FC = () => {
       <div className="text-center max-w-3xl mx-auto space-y-3">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-900 rounded-full text-xs font-bold uppercase tracking-wider">
           <Users className="w-3.5 h-3.5" />
-          <span>Verified Community Directory</span>
+          <span>{text.badge}</span>
         </div>
         <h1 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight">
-          Members Directory
+          {text.title}
         </h1>
         <p className="text-base sm:text-lg text-slate-600 leading-relaxed">
-          Connect with registered community members across all membership categories.
+          {text.subtitle}
         </p>
       </div>
 
@@ -110,7 +101,7 @@ export const MembersPage: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by member name, designation, city, or native place..."
+              placeholder={text.searchPlaceholder}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-900 transition-colors"
             />
             {searchQuery && (
@@ -118,7 +109,7 @@ export const MembersPage: React.FC = () => {
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
               >
-                Clear
+                {text.clear}
               </button>
             )}
           </div>
@@ -129,13 +120,13 @@ export const MembersPage: React.FC = () => {
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              aria-label="Filter by Member Category"
+              aria-label={text.filterLabel}
               className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-900"
             >
-              <option value="all">All</option>
+              <option value="all">{text.all}</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
-                  {c}
+                  {memberCategoryLabel(c, language)}
                 </option>
               ))}
             </select>
@@ -144,14 +135,14 @@ export const MembersPage: React.FC = () => {
 
         {/* Alphabet Quick Jump Bar (Spec Section 20) */}
         <div className="pt-2 border-t border-slate-100 flex items-center gap-1 overflow-x-auto text-xs pb-1">
-          <span className="text-slate-400 font-semibold uppercase text-[10px] mr-1 shrink-0">A-Z Jump:</span>
+          <span className="text-slate-400 font-semibold uppercase text-[10px] mr-1 shrink-0">{text.alphabetJump}</span>
           <button
             onClick={() => setSelectedLetter('all')}
             className={`px-2 py-1 rounded font-bold transition-colors shrink-0 ${
               selectedLetter === 'all' ? 'bg-blue-900 text-white' : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            All
+            {text.all}
           </button>
           {alphabet.map((letter) => (
             <button
@@ -173,8 +164,8 @@ export const MembersPage: React.FC = () => {
       {filteredMembers.length === 0 ? (
         <div className="text-center py-16 bg-slate-50 rounded-2xl border border-slate-200 p-8">
           <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <h3 className="text-lg font-bold text-slate-800">No member records found.</h3>
-          <p className="text-sm text-slate-500 mt-1">Try another name, keyword, or clear your filters.</p>
+          <h3 className="text-lg font-bold text-slate-800">{text.noRecords}</h3>
+          <p className="text-sm text-slate-500 mt-1">{text.noRecordsHint}</p>
           <button
             onClick={() => {
               setSearchQuery('');
@@ -183,7 +174,7 @@ export const MembersPage: React.FC = () => {
             }}
             className="mt-4 px-4 py-2 bg-blue-900 text-white text-xs font-bold rounded-lg"
           >
-            Reset Filters
+            {text.resetFilters}
           </button>
         </div>
       ) : (
@@ -210,12 +201,12 @@ export const MembersPage: React.FC = () => {
 
                   <div className="flex flex-col items-end gap-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
-                      {m.category}
+                      {memberCategoryLabel(m.category, language)}
                     </span>
                     {m.current_management && (
                       <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1">
                         <Award className="w-3 h-3 text-amber-700" />
-                        <span>Management</span>
+                        <span>{text.management}</span>
                       </span>
                     )}
                   </div>
@@ -226,7 +217,7 @@ export const MembersPage: React.FC = () => {
                   <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-900 transition-colors">
                     {m.display_name}
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium">{m.designation}</p>
+                  <p className="text-xs text-slate-500 font-medium">{memberCategoryLabel(m.category, language)}</p>
 
                   {m.management_post && (
                     <p className="text-xs font-bold text-amber-800 mt-1">
@@ -238,13 +229,13 @@ export const MembersPage: React.FC = () => {
                     {m.native_place && (
                       <div className="flex items-center gap-1.5">
                         <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">Native: {m.native_place}</span>
+                        <span className="truncate">{text.native}: {m.native_place}</span>
                       </div>
                     )}
                     {m.city && (
                       <div className="flex items-center gap-1.5">
                         <span className="w-3.5 text-center text-slate-400">•</span>
-                        <span>Residing: {m.city}</span>
+                        <span>{text.residing}: {m.city}</span>
                       </div>
                     )}
                   </div>
@@ -253,7 +244,7 @@ export const MembersPage: React.FC = () => {
 
               {/* Action Bottom */}
               <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-blue-900">
-                <span>View Full Profile</span>
+                <span>{text.viewProfile}</span>
                 <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
@@ -287,7 +278,7 @@ export const MembersPage: React.FC = () => {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">{activeModalMember.display_name}</h2>
-                  <p className="text-xs text-slate-500">{activeModalMember.designation} • {activeModalMember.category}</p>
+                  <p className="text-xs text-slate-500">{memberCategoryLabel(activeModalMember.category, language)} • {memberCategoryLabel(activeModalMember.category, language)}</p>
                   {activeModalMember.management_post && (
                     <span className="inline-block text-[11px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded mt-1">
                       {activeModalMember.management_post}
@@ -308,7 +299,7 @@ export const MembersPage: React.FC = () => {
               {/* Bio */}
               {activeModalMember.bio && (
                 <div>
-                  <h4 className="text-xs font-bold uppercase text-slate-500 mb-1">About Member</h4>
+                  <h4 className="text-xs font-bold uppercase text-slate-500 mb-1">{text.aboutMember}</h4>
                   <p className="text-slate-700 leading-relaxed whitespace-pre-line">{activeModalMember.bio}</p>
                 </div>
               )}
@@ -316,22 +307,22 @@ export const MembersPage: React.FC = () => {
               {/* Information Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-xs">
                 <div>
-                  <span className="text-slate-500 block">Member Registration ID:</span>
+                  <span className="text-slate-500 block">{text.memberId}</span>
                   <span className="font-bold text-slate-800">{activeModalMember.member_code}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Membership Status:</span>
+                  <span className="text-slate-500 block">{text.membershipStatus}</span>
                   <span className="font-bold text-emerald-800 uppercase">{activeModalMember.status}</span>
                 </div>
                 {activeModalMember.native_place && (
                   <div>
-                    <span className="text-slate-500 block">Native Place (Mool Niwas):</span>
+                    <span className="text-slate-500 block">{text.nativePlace}</span>
                     <span className="font-bold text-slate-800">{activeModalMember.native_place}</span>
                   </div>
                 )}
                 {activeModalMember.visibility.address_public && activeModalMember.city && (
                   <div>
-                    <span className="text-slate-500 block">Current City:</span>
+                    <span className="text-slate-500 block">{text.currentCity}</span>
                     <span className="font-bold text-slate-800">
                       {activeModalMember.city}
                     </span>
@@ -340,7 +331,7 @@ export const MembersPage: React.FC = () => {
                 {activeModalMember.visibility.address_public &&
                   (activeModalMember.address_line_2 || activeModalMember.city) && (
                     <div className="sm:col-span-2">
-                      <span className="text-slate-500 block">Address:</span>
+                      <span className="text-slate-500 block">{text.address}</span>
                       <span className="font-bold text-slate-800 whitespace-pre-line">
                         {[
                           activeModalMember.address_line_2,
@@ -353,7 +344,7 @@ export const MembersPage: React.FC = () => {
                   )}
                 {activeModalMember.joining_date && (
                   <div>
-                    <span className="text-slate-500 block">Member Since:</span>
+                    <span className="text-slate-500 block">{text.memberSince}</span>
                     <span className="font-bold text-slate-800">{activeModalMember.joining_date}</span>
                   </div>
                 )}
@@ -361,7 +352,7 @@ export const MembersPage: React.FC = () => {
 
               {/* Public Contact Details (Respecting Privacy Flags - Section 22) */}
               <div className="border-t border-slate-100 pt-4 space-y-3">
-                <h4 className="text-xs font-bold uppercase text-slate-500">Contact Details</h4>
+                <h4 className="text-xs font-bold uppercase text-slate-500">{text.contactDetails}</h4>
                 <div className="flex flex-wrap gap-4">
                   {activeModalMember.show_phone && activeModalMember.phone ? (
                     <a
@@ -372,7 +363,7 @@ export const MembersPage: React.FC = () => {
                       <span>{activeModalMember.phone}</span>
                     </a>
                   ) : (
-                    <span className="text-xs text-slate-400 italic">Phone is marked private by member</span>
+                    <span className="text-xs text-slate-400 italic">{text.phonePrivate}</span>
                   )}
 
                   {activeModalMember.show_email && activeModalMember.email ? (
@@ -394,7 +385,7 @@ export const MembersPage: React.FC = () => {
                 onClick={handleCloseDetail}
                 className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors"
               >
-                Close Profile
+                {text.closeProfile}
               </button>
             </div>
           </div>

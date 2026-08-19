@@ -279,7 +279,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [textSize, setTextSize] = useState<TextScale>(() =>
     loadStored('text_size', 'normal'),
   );
-  const [language, setLanguage] = useState<AppLanguage>('en');
+  const [language, setLanguage] = useState<AppLanguage>(() => loadStored('language', 'en'));
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAdminPortalOpen, setIsAdminPortalOpenState] = useState(
     initialNavigation.isAdminPortalOpen,
@@ -1129,6 +1129,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [setIsAdminPortalOpen]);
 
   useEffect(() => saveStored('text_size', textSize), [textSize]);
+  useEffect(() => saveStored('language', language), [language]);
 
   const openLightbox = (
     photos: { url: string; caption?: string; title?: string }[],
