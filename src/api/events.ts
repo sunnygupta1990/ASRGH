@@ -26,7 +26,7 @@ interface BackendEventAlbum {
   photos: BackendEventPhoto[];
 }
 
-interface BackendEvent {
+export interface BackendEvent {
   id: string;
   title: string;
   slug: string;

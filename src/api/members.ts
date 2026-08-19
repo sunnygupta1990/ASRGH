@@ -36,7 +36,7 @@ interface BackendManagementAssignment {
   };
 }
 
-interface BackendMember {
+export interface BackendMember {
   id: string;
   memberCode?: string | null;
   firstName: string;

@@ -231,6 +231,14 @@ export async function updateSettingsBundleApi(data: { organization?: Record<stri
   await apiRequest('/api/admin/operations/settings', { method: 'PUT', body: JSON.stringify(data) });
 }
 
+export async function publishWebsiteChangesApi(): Promise<{ publishedAt: string }> {
+  const response = await apiRequest<{ success: true; data: { publishedAt: string } }>(
+    '/api/admin/public-content/publish',
+    { method: 'POST' },
+  );
+  return response.data;
+}
+
 
 export interface StaffAccess {
   members: boolean;

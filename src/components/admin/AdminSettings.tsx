@@ -14,9 +14,11 @@ import {
   Save,
   Users,
   Eye,
+  UploadCloud,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { OrganizationSettings, SocialLink, StatisticItem } from '../../types';
+import { publishWebsiteChangesApi } from '../../api/adminPortal';
 
 export const AdminSettings: React.FC = () => {
   const {
@@ -30,12 +32,31 @@ export const AdminSettings: React.FC = () => {
     roles,
     updateAdminUser,
     hasPermission,
+    currentUser,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'general' | 'stats' | 'social' | 'rbac' | 'system'>('general');
   const [formData, setFormData] = useState<OrganizationSettings>({ ...settings });
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [lastPublishedAt, setLastPublishedAt] = useState<string | null>(null);
+
+  const handlePublish = async () => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    setIsPublishing(true);
+    try {
+      const result = await publishWebsiteChangesApi();
+      setLastPublishedAt(result.publishedAt);
+      setSuccessMsg('Website changes published. The next visitor will load fresh public content.');
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Unable to publish website changes.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -406,6 +427,33 @@ export const AdminSettings: React.FC = () => {
               Administrative records are stored authoritatively by the backend. Destructive database maintenance is intentionally unavailable in the browser.
             </p>
           </div>
+
+          {currentUser.is_system_role && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-blue-950">Publish public website content</h4>
+                  <p className="mt-1 max-w-2xl text-xs text-blue-800">
+                    Clear the public-content cache after you finish editing members, events, circulars, photos, management, or website settings.
+                  </p>
+                  {lastPublishedAt && (
+                    <p className="mt-2 text-[11px] font-semibold text-blue-700">
+                      Last published this session: {new Date(lastPublishedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePublish}
+                  disabled={isPublishing}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-950 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  {isPublishing ? 'Publishing…' : 'Publish Website Changes'}
+                </button>
+              </div>
+            </div>
+          )}
 
         </div>
       )}

@@ -1,20 +1,24 @@
 // frontend/src/api/publicContent.ts
 
-import { fetchPublicEvents } from './events';
-import { fetchPublicMembers } from './members';
 import { apiRequest } from './client';
+import { mapBackendEvent, type BackendEvent } from './events';
+import { mapBackendMember, type BackendMember } from './members';
 
 export async function fetchPublicContent() {
-  const [events, members, settingsResponse] = await Promise.all([
-    fetchPublicEvents(),
-    fetchPublicMembers(),
-    apiRequest<{ success: true; data: { organization: Record<string, unknown>; websiteSetting: Record<string, unknown> | null } }>('/api/public/settings'),
-  ]);
-
+  const response = await apiRequest<{
+    success: true;
+    data: {
+      events: BackendEvent[];
+      members: BackendMember[];
+      settings: { organization: Record<string, unknown>; websiteSetting: Record<string, unknown> | null };
+      announcements: unknown[];
+      socialWork: unknown[];
+    };
+  }>('/api/public/content');
   return {
-    events,
-    members,
-    settings: settingsResponse.data,
+    ...response.data,
+    events: response.data.events.map(mapBackendEvent),
+    members: response.data.members.map(mapBackendMember),
   };
 }
 
