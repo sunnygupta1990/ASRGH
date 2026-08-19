@@ -99,7 +99,9 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
     setIsProcessing(true);
     try {
       const result = await commitImport(selectedModule, selectedFile.name, rawRows);
-      alert(`Import committed: ${result.accepted} accepted, ${result.rejected} rejected.`);
+      alert(selectedModule === 'members'
+        ? `Import committed: ${result.created ?? 0} created, ${result.updated ?? 0} updated, ${result.skipped ?? 0} skipped, ${result.rejected} rejected.`
+        : `Import committed: ${result.accepted} accepted, ${result.rejected} rejected.`);
       setSelectedFile(null);
       setRawRows([]);
       setValidationResult(null);

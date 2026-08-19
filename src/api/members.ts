@@ -4,6 +4,7 @@ import { Member } from '../types';
 import { apiRequest } from './client';
 import { getCustomField } from './customFields';
 import { API_BASE_URL } from './config';
+import { categoryFromMemberCode } from '../utils/memberClassification';
 
 interface BackendManagementAssignment {
   id: string;
@@ -160,6 +161,7 @@ function mapManagementAssignments(
 }
 
 export function mapBackendMember(member: BackendMember): Member {
+  const category = categoryFromMemberCode(member.memberCode);
   const visibility = getCustomField(member, 'visibility', {
     phone_public: false,
     email_public: false,
@@ -199,12 +201,8 @@ export function mapBackendMember(member: BackendMember): Member {
       `${member.firstName} ${member.lastName ?? ''}`.trim(),
     gender: member.gender ?? '',
     date_of_birth: member.dateOfBirth?.slice(0, 10),
-    category: getCustomField(member, 'category', 'General'),
-    designation: getCustomField(
-      member,
-      'designation',
-      'Community Member',
-    ),
+    category,
+    designation: category,
     photo_url: mediaUrl(
       member.profileMedia?.storageKey ??
         getCustomField<string | undefined>(

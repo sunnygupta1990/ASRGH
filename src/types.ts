@@ -6,7 +6,7 @@ export type ContactStatus = 'new' | 'assigned' | 'in_progress' | 'resolved' | 'c
 export type RejectionStatus = 'rejected' | 'corrected' | 're_uploaded' | 'resolved';
 export type ImportStatus = 'uploaded' | 'validating' | 'validated' | 'partially_accepted' | 'completed' | 'failed';
 export type SocialWorkType = 'Ongoing Initiative' | 'Individual Project';
-export type MemberCategory = 'General' | 'Patron' | 'Life Member' | 'Youth Wing' | 'Honorary' | string;
+export type MemberCategory = 'Trustee' | 'Life Member' | 'Ordinary';
 export type ContactSubmissionCategory =
   | 'General Inquiry'
   | 'Membership Application'
@@ -33,7 +33,7 @@ export interface Member {
   display_name: string;
   gender?: string;
   date_of_birth?: string;
-  category: string; // e.g. 'General', 'Patron', 'Life Member', 'Youth Wing'
+  category: MemberCategory;
   designation: string;
   photo_url?: string;
   phone?: string;

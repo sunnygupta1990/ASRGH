@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Member, MemberCategory } from '../types';
+import { compareMembersByCode, filterMembersByCategory, MEMBER_CATEGORIES } from '../utils/memberClassification';
 
 export const MembersPage: React.FC = () => {
   const { publicMembers, selectedEntityId, setSelectedEntityId } = useApp();
@@ -42,18 +43,10 @@ export const MembersPage: React.FC = () => {
 
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
-  const categories: MemberCategory[] = [
-    'Patron',
-    'Life Member',
-    'Executive Member',
-    'General Member',
-    'Honorary Member',
-    'Youth Wing',
-    'Women Wing',
-  ];
+  const categories: MemberCategory[] = MEMBER_CATEGORIES;
 
   const filteredMembers = useMemo(() => {
-    return publicMembers
+    return filterMembersByCategory(publicMembers, selectedCategory)
       .filter((m) => m.status === 'active')
       .filter((m) => {
         // Search Filter
@@ -70,11 +63,6 @@ export const MembersPage: React.FC = () => {
           if (!match) return false;
         }
 
-        // Category Filter
-        if (selectedCategory !== 'all' && m.category !== selectedCategory) {
-          return false;
-        }
-
         // Alphabet Filter
         if (selectedLetter !== 'all') {
           const firstChar = (m.first_name || m.display_name || '').trim().charAt(0).toUpperCase();
@@ -83,11 +71,7 @@ export const MembersPage: React.FC = () => {
 
         return true;
       })
-      .sort((a, b) => {
-        if (a.current_management && !b.current_management) return -1;
-        if (!a.current_management && b.current_management) return 1;
-        return a.display_order - b.display_order || a.display_name.localeCompare(b.display_name);
-      });
+      .sort(compareMembersByCode);
   }, [publicMembers, searchQuery, selectedCategory, selectedLetter]);
 
   const handleOpenDetail = (m: Member) => {
@@ -112,7 +96,7 @@ export const MembersPage: React.FC = () => {
           Members Directory
         </h1>
         <p className="text-base sm:text-lg text-slate-600 leading-relaxed">
-          Connect with registered community members, patrons, elders, and youth representatives across all chapters.
+          Connect with registered community members across all membership categories.
         </p>
       </div>
 
@@ -148,7 +132,7 @@ export const MembersPage: React.FC = () => {
               aria-label="Filter by Member Category"
               className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-900"
             >
-              <option value="all">All Membership Categories</option>
+              <option value="all">All</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -349,28 +333,18 @@ export const MembersPage: React.FC = () => {
                   <div>
                     <span className="text-slate-500 block">Current City:</span>
                     <span className="font-bold text-slate-800">
-                      {activeModalMember.city}, {activeModalMember.state}
+                      {activeModalMember.city}
                     </span>
                   </div>
                 )}
                 {activeModalMember.visibility.address_public &&
-                  (activeModalMember.address ||
-                    activeModalMember.address_line_2 ||
-                    activeModalMember.city ||
-                    activeModalMember.state ||
-                    activeModalMember.postal_code ||
-                    activeModalMember.country) && (
+                  (activeModalMember.address_line_2 || activeModalMember.city) && (
                     <div className="sm:col-span-2">
                       <span className="text-slate-500 block">Address:</span>
                       <span className="font-bold text-slate-800 whitespace-pre-line">
                         {[
-                          activeModalMember.address,
                           activeModalMember.address_line_2,
-                          [activeModalMember.city, activeModalMember.state]
-                            .filter(Boolean)
-                            .join(', '),
-                          activeModalMember.postal_code,
-                          activeModalMember.country,
+                          activeModalMember.city,
                         ]
                           .filter(Boolean)
                           .join('\n')}

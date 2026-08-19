@@ -200,8 +200,9 @@ export async function resolveRejectedRecordApi(id: string): Promise<void> {
   await apiRequest(`/api/admin/operations/rejected-records/${id}/resolve`, { method: 'PATCH' });
 }
 
-export async function commitImportApi(entityType: 'members' | 'events' | 'social_work' | 'announcements', filename: string, rows: Record<string, string>[]): Promise<{ accepted: number; rejected: number }> {
-  const response = await apiRequest<{ success: true; data: { accepted: number; rejected: number } }>('/api/admin/operations/imports', { method: 'POST', body: JSON.stringify({ entityType, filename, rows }) });
+export interface ImportCommitResult { accepted: number; created?: number; updated?: number; skipped?: number; rejected: number }
+export async function commitImportApi(entityType: 'members' | 'events' | 'social_work' | 'announcements', filename: string, rows: Record<string, string>[]): Promise<ImportCommitResult> {
+  const response = await apiRequest<{ success: true; data: ImportCommitResult }>('/api/admin/operations/imports', { method: 'POST', body: JSON.stringify({ entityType, filename, rows }) });
   return response.data;
 }
 

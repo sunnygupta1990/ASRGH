@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Member, Event, SocialWorkActivity, Announcement, Milestone, Achievement, RejectedRecord } from '../types';
+import { categoryFromMemberCode } from './memberClassification';
 
 export interface ValidationResult<T> {
   passed: T[];
@@ -49,15 +50,15 @@ export const TEMPLATE_SPECS = {
     ],
     sampleRows: [
       {
-        'Member Code': 'MEM-0009',
+        'Member Code': 'O-0009',
         'First Name': 'Deepak',
         'Middle Name': '',
         'Last Name': 'Garg',
         'Display Name': 'Shri Deepak Garg',
         'Gender': 'Male',
         'Date of Birth': '1985-04-20',
-        'Member Category': 'General',
-        'Designation': 'Community Member',
+        'Member Category': 'Ordinary',
+        'Designation': 'Ordinary',
         'Phone': '+91 98111 99887',
         'Email': 'deepak.garg@example.com',
         'Address Line 1': 'Community Housing',
@@ -357,8 +358,8 @@ export function validateMembersImport(
     const firstName = (row['First Name'] || '').trim();
     const lastName = (row['Last Name'] || '').trim();
     const displayName = (row['Display Name'] || `${firstName} ${lastName}`).trim();
-    const category = (row['Member Category'] || 'General').trim();
-    const designation = (row['Designation'] || 'Member').trim();
+    const category = categoryFromMemberCode(code);
+    const designation = category;
     const isMgmt = (row['Current Management'] || 'No').toLowerCase() === 'yes';
     const mgmtPost = (row['Management Post'] || '').trim();
     const phone = (row['Phone'] || '').trim();
@@ -378,18 +379,18 @@ export function validateMembersImport(
       return;
     }
 
-    if (existingCodes.has(code.toUpperCase()) || batchCodes.has(code.toUpperCase())) {
+    if (batchCodes.has(code.toUpperCase())) {
       failed.push({
         rowNumber,
         reference: code,
         rawData: row,
-        error: `Hard Duplicate Error: Member Code "${code}" already exists in system or batch.`,
-        suggestedFix: 'Assign a new unused Member Code',
+        error: `Duplicate Error: Member Code "${code}" appears more than once in this file.`,
+        suggestedFix: 'Keep only one row for this Member Code',
       });
       return;
     }
 
-    if (!firstName) {
+    if (!firstName && !existingCodes.has(code.toUpperCase())) {
       failed.push({
         rowNumber,
         reference: code,

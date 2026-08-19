@@ -32,6 +32,7 @@ import {
 } from '../../api/adminPortal';
 import { deleteMemberProfilePhoto, uploadMemberProfilePhoto } from '../../api/members';
 import { filterAdminMembers } from '../../utils/adminMemberSearch';
+import { categoryFromMemberCode, MEMBER_CATEGORIES } from '../../utils/memberClassification';
 
 export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
   const { members, addMember, updateMember, deleteMember, archiveMember, refreshMembersFromApi } = useApp();
@@ -62,8 +63,8 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
     middle_name: '',
     last_name: '',
     display_name: '',
-    category: 'Life Member',
-    designation: 'Community Member',
+    category: 'Ordinary',
+    designation: 'Ordinary',
     current_management: false,
     management_post: '',
     phone: '',
@@ -128,8 +129,8 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
       middle_name: '',
       last_name: '',
       display_name: '',
-      category: 'Life Member',
-      designation: 'Community Member',
+      category: categoryFromMemberCode(nextCode),
+      designation: categoryFromMemberCode(nextCode),
       current_management: false,
       management_post: '',
       phone: '',
@@ -182,6 +183,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
     const displayName =
       formData.display_name?.trim() ||
       `${formData.first_name || ''} ${formData.last_name || ''}`.trim();
+    const category = categoryFromMemberCode(formData.member_code);
 
     setIsSaving(true);
 
@@ -191,6 +193,8 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
         await updateMember(selectedMember.id, {
           ...formData,
           display_name: displayName,
+          category,
+          designation: category,
         });
         savedMemberId = selectedMember.id;
       } else {
@@ -198,6 +202,8 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
           ...formData,
           id: `mem-${Date.now()}`,
           display_name: displayName,
+          category,
+          designation: category,
           display_order: formData.display_order || members.length + 1,
           visibility: formData.visibility || {
             phone_public: false,
@@ -333,10 +339,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
             className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 font-semibold outline-none"
           >
             <option value="all">All Categories</option>
-            <option value="Patron">Patron</option>
-            <option value="Life Member">Life Member</option>
-            <option value="General">General</option>
-            <option value="Youth Wing">Youth Wing</option>
+            {MEMBER_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
           </select>
 
           <select
@@ -346,7 +349,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
           >
             <option value="all">All Management Status</option>
             <option value="yes">Management Only</option>
-            <option value="no">General Members</option>
+            <option value="no">Non-Management Members</option>
           </select>
         </div>
       </div>
@@ -486,7 +489,7 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                     type="text"
                     required
                     value={formData.member_code || ''}
-                    onChange={(e) => setFormData({ ...formData, member_code: e.target.value })}
+                    onChange={(e) => { const memberCode = e.target.value; const category = categoryFromMemberCode(memberCode); setFormData({ ...formData, member_code: memberCode, category, designation: category }); }}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold"
                   />
                 </div>
@@ -543,14 +546,11 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Category</label>
                   <select
-                    value={formData.category || 'Life Member'}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    value={categoryFromMemberCode(formData.member_code)}
+                    disabled
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
                   >
-                    <option value="Patron">Patron</option>
-                    <option value="Life Member">Life Member</option>
-                    <option value="General">General</option>
-                    <option value="Youth Wing">Youth Wing</option>
+                    {MEMBER_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
                   </select>
                 </div>
               </div>
@@ -567,9 +567,8 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                   <label className="block font-bold text-slate-700 mb-1">Designation</label>
                   <input
                     type="text"
-                    value={formData.designation || ''}
-                    onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-                    placeholder="e.g. Senior Industrialist"
+                    value={categoryFromMemberCode(formData.member_code)}
+                    readOnly
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
                   />
                 </div>

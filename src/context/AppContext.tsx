@@ -76,6 +76,7 @@ import {
   deleteSocialWorkCategoryApi,
   fetchDashboardApi,
   DashboardData,
+  ImportCommitResult,
   updateSettingsBundleApi,
 } from '../api/adminPortal';
 
@@ -197,7 +198,7 @@ interface AppContextType {
   resolveRejectedRecord: (id: string) => Promise<void>;
 
   importBatches: ImportBatch[];
-  commitImport: (entityType: 'members' | 'events' | 'social_work' | 'announcements', filename: string, rows: Record<string, string>[]) => Promise<{ accepted: number; rejected: number }>;
+  commitImport: (entityType: 'members' | 'events' | 'social_work' | 'announcements', filename: string, rows: Record<string, string>[]) => Promise<ImportCommitResult>;
   updateAdminUser: (id: string, data: { status?: string; roleIds?: string[] }) => Promise<void>;
   hasPermission: (permission: string) => boolean;
 
