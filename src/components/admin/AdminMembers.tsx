@@ -31,6 +31,7 @@ import {
   updateManagementTermApi,
 } from '../../api/adminPortal';
 import { deleteMemberProfilePhoto, uploadMemberProfilePhoto } from '../../api/members';
+import { filterAdminMembers } from '../../utils/adminMemberSearch';
 
 export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
   const { members, addMember, updateMember, deleteMember, archiveMember, refreshMembersFromApi } = useApp();
@@ -87,20 +88,10 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
   });
 
   const filteredMembers = useMemo(() => {
-    return members.filter((m) => {
-      if (categoryFilter !== 'all' && m.category !== categoryFilter) return false;
-      if (managementFilter === 'yes' && !m.current_management) return false;
-      if (managementFilter === 'no' && m.current_management) return false;
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        return (
-          m.display_name.toLowerCase().includes(q) ||
-          m.member_code.toLowerCase().includes(q) ||
-          m.designation.toLowerCase().includes(q) ||
-          (m.phone && m.phone.includes(q))
-        );
-      }
-      return true;
+    return filterAdminMembers(members, {
+      search,
+      category: categoryFilter,
+      management: managementFilter,
     });
   }, [members, search, categoryFilter, managementFilter]);
 
@@ -919,4 +910,3 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
     </div>
   );
 };
-

@@ -70,6 +70,12 @@ export interface BackendMember {
 interface MemberListResponse {
   success: true;
   data: BackendMember[];
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 interface MemberResponse {
@@ -317,11 +323,21 @@ export async function fetchPublicMembers(): Promise<Member[]> {
 }
 
 export async function fetchAdminMembers(): Promise<Member[]> {
-  const response = await apiRequest<MemberListResponse>(
-    '/api/members',
+  const firstPage = await apiRequest<MemberListResponse>(
+    '/api/members?page=1&pageSize=200',
+  );
+  const totalPages = firstPage.pagination?.totalPages ?? 1;
+  const remainingPages = await Promise.all(
+    Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) =>
+      apiRequest<MemberListResponse>(
+        `/api/members?page=${index + 2}&pageSize=200`,
+      ),
+    ),
   );
 
-  return response.data.map(mapBackendMember);
+  return [firstPage, ...remainingPages]
+    .flatMap((response) => response.data)
+    .map(mapBackendMember);
 }
 
 export async function createAdminMember(
