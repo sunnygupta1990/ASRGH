@@ -116,6 +116,8 @@ function isAssignmentCurrent(
   const assignmentEnd = assignment.endDate?.slice(0, 10);
 
   return (
+    assignment.position.isActive &&
+    assignment.term.status.toLocaleLowerCase() === 'active' &&
     termStart <= today &&
     (!termEnd || termEnd >= today) &&
     (!assignmentStart || assignmentStart <= today) &&

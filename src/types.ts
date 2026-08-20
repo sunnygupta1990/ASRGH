@@ -64,7 +64,7 @@ export interface Member {
 
 export interface ManagementPosition { id: string; code: string; name: string; display_order: number; description?: string; is_active: boolean; custom_fields: Record<string, unknown>; }
 export interface ManagementTerm { id: string; name: string; start_date: string; end_date?: string; status: string; notes?: string; custom_fields: Record<string, unknown>; }
-export interface ManagementAssignment { id: string; member_id: string; position_id: string; term_id: string; start_date?: string; end_date?: string; display_order: number; notes?: string; custom_fields: Record<string, unknown>; position: ManagementPosition; term: ManagementTerm; }
+export interface ManagementAssignment { id: string; member_id: string; position_id: string; term_id: string; start_date?: string; end_date?: string; display_order: number; notes?: string; custom_fields: Record<string, unknown>; current: boolean; position: ManagementPosition; term: ManagementTerm; }
 
 export interface SocialWorkCategory {
   id: string;

@@ -31,7 +31,7 @@ import {
   updateManagementTermApi,
 } from '../../api/adminPortal';
 import { deleteMemberProfilePhoto, uploadMemberProfilePhoto } from '../../api/members';
-import { filterAdminMembers } from '../../utils/adminMemberSearch';
+import { adminContactValue, filterAdminMembers } from '../../utils/adminMemberSearch';
 import { categoryFromMemberCode, MEMBER_CATEGORIES } from '../../utils/memberClassification';
 
 export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
@@ -382,7 +382,9 @@ export const AdminMembers: React.FC<{ onNavigateTab: (tab: string) => void }> = 
                       />
                       <div>
                         <div className="font-bold text-slate-900">{m.display_name}</div>
-                        <div className="text-[11px] text-slate-500">{m.designation} â€¢ {m.city}</div>
+                        <div className="text-[11px] text-slate-500">{[m.designation, m.city].filter(Boolean).join(' • ')}</div>
+                        {adminContactValue(m.phone) && <div className="text-[11px] text-slate-500">Phone: {adminContactValue(m.phone)}</div>}
+                        {adminContactValue(m.email) && <div className="text-[11px] text-slate-500">Email: {adminContactValue(m.email)}</div>}
                       </div>
                     </div>
                   </td>

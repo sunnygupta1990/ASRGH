@@ -6,6 +6,13 @@ export interface AdminMemberFilters {
   management: string;
 }
 
+const LEGACY_EMPTY_CONTACT = /^(?:[-—–]+|(?:â€”|â€“|â€”)|(?:phone|email)\s*(?:[-—–]+|â€”|â€“|â€”))$/i;
+
+export function adminContactValue(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  return !normalized || LEGACY_EMPTY_CONTACT.test(normalized) ? '' : normalized;
+}
+
 export function filterAdminMembers(
   members: Member[],
   filters: AdminMemberFilters,
@@ -25,7 +32,11 @@ export function filterAdminMembers(
       member.last_name,
       member.member_code,
       member.designation,
-      member.phone,
+      member.category,
+      member.management_post,
+      member.current_management ? 'management' : 'non-management',
+      adminContactValue(member.phone),
+      adminContactValue(member.email),
     ].some((value) => value?.toLocaleLowerCase().includes(query));
   });
 }

@@ -203,6 +203,9 @@ export const MembersPage: React.FC = () => {
                     <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
                       {memberCategoryLabel(m.category, language)}
                     </span>
+                    <span className="text-xs font-mono font-bold text-slate-700">
+                      {m.member_code}
+                    </span>
                     {m.current_management && (
                       <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md flex items-center gap-1">
                         <Award className="w-3 h-3 text-amber-700" />
@@ -217,8 +220,6 @@ export const MembersPage: React.FC = () => {
                   <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-900 transition-colors">
                     {m.display_name}
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium">{memberCategoryLabel(m.category, language)}</p>
-
                   {m.management_post && (
                     <p className="text-xs font-bold text-amber-800 mt-1">
                       {m.management_post}
@@ -278,7 +279,7 @@ export const MembersPage: React.FC = () => {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">{activeModalMember.display_name}</h2>
-                  <p className="text-xs text-slate-500">{memberCategoryLabel(activeModalMember.category, language)} • {memberCategoryLabel(activeModalMember.category, language)}</p>
+                  <p className="text-xs text-slate-500">{memberCategoryLabel(activeModalMember.category, language)} • {activeModalMember.member_code}</p>
                   {activeModalMember.management_post && (
                     <span className="inline-block text-[11px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded mt-1">
                       {activeModalMember.management_post}
