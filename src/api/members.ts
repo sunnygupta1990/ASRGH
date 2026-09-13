@@ -323,19 +323,24 @@ export async function fetchPublicMembers(): Promise<Member[]> {
 }
 
 export async function fetchAdminMembers(): Promise<Member[]> {
+  const pageSize = 50;
   const firstPage = await apiRequest<MemberListResponse>(
-    '/api/members?page=1&pageSize=200',
+    `/api/members?page=1&pageSize=${pageSize}`,
   );
   const totalPages = firstPage.pagination?.totalPages ?? 1;
-  const remainingPages = await Promise.all(
-    Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) =>
-      apiRequest<MemberListResponse>(
-        `/api/members?page=${index + 2}&pageSize=200`,
-      ),
-    ),
-  );
+  const pages: MemberListResponse[] = [firstPage];
 
-  return [firstPage, ...remainingPages]
+  // Fetch sequentially so the browser does not create a burst of large
+  // authenticated member requests against the Worker.
+  for (let page = 2; page <= totalPages; page += 1) {
+    pages.push(
+      await apiRequest<MemberListResponse>(
+        `/api/members?page=${page}&pageSize=${pageSize}`,
+      ),
+    );
+  }
+
+  return pages
     .flatMap((response) => response.data)
     .map(mapBackendMember);
 }
