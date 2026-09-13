@@ -22,6 +22,7 @@ import {
   ModuleValidationConfig,
 } from '../../utils/excelEngine';
 import { RejectedRecord } from '../../types';
+import { RejectedRecordsManager } from './RejectedRecordsManager';
 import { exportAdminDataApi } from '../../api/adminPortal';
 
 export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
@@ -31,8 +32,6 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
     socialWorkActivities,
     announcements,
     importBatches,
-    rejectedRecords,
-    resolveRejectedRecord,
     commitImport,
   } = useApp();
 
@@ -47,7 +46,6 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
     invalidRows: RejectedRecord[];
   } | null>(null);
 
-  const [filterRejectionModule, setFilterRejectionModule] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -114,11 +112,6 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
     }
 
   };
-
-  const filteredRejections = rejectedRecords.filter((r) => {
-    if (filterRejectionModule !== 'all' && r.module !== filterRejectionModule) return false;
-    return true;
-  });
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -299,81 +292,7 @@ export const AdminImportExport: React.FC<{ onNavigateTab: (tab: string) => void 
         )}
       </div>
 
-      {/* Rejected Records Queue & Resolution */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600" />
-              <span>Rejected Records & Validation Error Log</span>
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Rows from previous Excel uploads that failed validation. Resolve or purge them once addressed.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <select
-              value={filterRejectionModule}
-              onChange={(e) => setFilterRejectionModule(e.target.value)}
-              className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl"
-            >
-              <option value="all">All Modules</option>
-              <option value="members">Members</option>
-              <option value="events">Events</option>
-              <option value="social_work">Social Work</option>
-              <option value="announcements">Announcements</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
-              <tr>
-                <th className="py-3 px-4">Module & Reference</th>
-                <th className="py-3 px-4">Row #</th>
-                <th className="py-3 px-4">Reason / Error</th>
-                <th className="py-3 px-4">Suggested Fix</th>
-                <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredRejections.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    No rejected records pending resolution. All datasets are clean!
-                  </td>
-                </tr>
-              ) : (
-                filteredRejections.map((rej) => (
-                  <tr key={rej.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 uppercase text-[9px] mr-2">
-                        {rej.module}
-                      </span>
-                      {rej.record_reference}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono font-bold text-slate-700">Row {rej.row_number}</td>
-                    <td className="py-3.5 px-4 text-rose-700 font-medium">{rej.error_message}</td>
-                    <td className="py-3.5 px-4 text-slate-600">{rej.suggested_fix || 'Check field formatting'}</td>
-                    <td className="py-3.5 px-4 text-[10px] text-slate-400">{rej.rejected_at}</td>
-                    <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => void resolveRejectedRecord(rej.id).catch((error) => alert(error instanceof Error ? error.message : 'Unable to resolve rejected record.'))}
-                        className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs transition-colors"
-                      >
-                        Dismiss
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <RejectedRecordsManager refreshKey={importBatches} />
 
       {/* Past Import Batches History */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
